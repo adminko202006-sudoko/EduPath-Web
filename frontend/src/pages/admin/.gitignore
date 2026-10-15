@@ -1,0 +1,32 @@
+# Laravel secrets and dependencies
+backend/.env
+backend/.env.*
+!backend/.env.example
+backend/vendor/
+backend/node_modules/
+backend/storage/*.key
+backend/storage/logs/
+backend/storage/framework/cache/
+backend/storage/framework/sessions/
+backend/storage/framework/views/
+
+# React dependencies and build files
+frontend/node_modules/
+frontend/dist/
+
+# Local environment and editor files
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Database dumps and backups
+*.sql
+*.sql.gz
+*.dump
+*.bak

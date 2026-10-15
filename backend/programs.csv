@@ -1,0 +1,9 @@
+Get-Content ".\programs.csv"
+Get-Content ".\programs.csv"program_name,program_code,program_description
+Bachelor of Science in Information Technology,BSIT,A program focused on information technology software development computer systems and related technologies.
+Bachelor of Science in Office Administration,BSOA,A program focused on office administration business operations and administrative management.
+Bachelor of Elementary Education,BEED,A program preparing students for professional teaching in elementary education.
+Bachelor of Secondary Education - English,BSED-ENG,A program preparing students for professional teaching with a specialization in English.
+Bachelor of Arts in Political Science,BA-POLS,A program focused on political systems government public policy and political studies.
+Bachelor of Arts in Communication,BA-COMM,A program focused on communication media journalism and related communication practices.
+Bachelor of Science in Criminology,BSCrim,A program focused on criminology criminal justice law enforcement and related fields.

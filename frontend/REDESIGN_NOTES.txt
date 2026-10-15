@@ -1,0 +1,19 @@
+EduPath Premium Dark UI Redesign
+
+This archive contains the updated src/ folder from the supplied source archive.
+
+Changes made:
+- Updated global design tokens to the midnight navy / electric blue / gold palette.
+- Added a centralized configurable campus background in src/index.css using --ep-campus-background.
+- Applied consistent dark surfaces, text contrast, borders, cards, inputs, tables, focus states, and reduced-motion behavior.
+- Updated shared Admin, Staff, and Applicant layout shell backgrounds.
+- Updated shared navbar/sidebar brand accents to electric blue and gold.
+- Preserved existing route/component structure and business logic.
+
+Important validation note:
+The uploaded ZIP contains the src contents only; it does not include package.json, a lockfile, or node_modules. A production build could not be run from this archive alone. Copy/merge this src folder into the existing frontend project and run the commands below from that project root:
+  npm install
+  npm run build
+  npm run dev
+
+The original archive already contained several zero-byte files (including components/Loading.jsx, components/Modal.jsx, components/Footer.jsx, applicant/Announcements.jsx, and several service files). These were not filled in or rewritten as part of this visual redesign.
