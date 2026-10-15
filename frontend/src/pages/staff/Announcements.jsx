@@ -20,6 +20,7 @@ import {
 
 import api from '../../services/api';
 import { useConfirmDialog, ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import ModalPortal from '../../components/ui/ModalPortal';
 import { useAuth } from '../../context/AuthContext';
 
 const getStatusConfig = (status) => {
@@ -1118,7 +1119,16 @@ const StaffAnnouncements = ({ confirm }) => {
           CREATE / EDIT MODAL
       ===================================================== */}
       {showForm && (
+        <ModalPortal
+          onEscape={() => {
+            if (!saving) closeForm();
+          }}
+        >
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={editingAnnouncement ? 'Edit Announcement' : 'New Announcement'}
+          tabIndex={-1}
           className="
             fixed
             inset-0
@@ -1514,13 +1524,19 @@ const StaffAnnouncements = ({ confirm }) => {
             </form>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* =====================================================
           VIEW MODAL
       ===================================================== */}
       {selectedAnnouncement && (
+        <ModalPortal onEscape={closeAnnouncement}>
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Announcement Details"
+          tabIndex={-1}
           className="
             fixed
             inset-0
@@ -1775,6 +1791,7 @@ const StaffAnnouncements = ({ confirm }) => {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

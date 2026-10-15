@@ -28,6 +28,8 @@ import {
   X,
 } from 'lucide-react';
 
+import ModalPortal from '../components/ui/ModalPortal';
+
 import tmcLogo from '../assets/tmcLogo.jpg';
 
 import campusImage from '../assets/about/tmc-campus.jpg';
@@ -1026,7 +1028,12 @@ const About = () => {
       ========================================== */}
 
       {selectedImage && (
+        <ModalPortal>
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={selectedImage?.title || 'Image viewer'}
+          tabIndex={-1}
           className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6"
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
@@ -1185,6 +1192,7 @@ const About = () => {
           </div>
 
         </div>
+        </ModalPortal>
       )}
 
     </div>

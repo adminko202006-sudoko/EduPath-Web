@@ -20,6 +20,7 @@ import {
 
 import api from '../../services/api';
 import { useConfirmDialog, ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import ModalPortal from '../../components/ui/ModalPortal';
 import { useAuth } from '../../context/AuthContext';
 
 const isUpcoming = (exam) => {
@@ -1467,7 +1468,16 @@ const StaffEntranceExams = ({ confirm }) => {
           VIEW EXAM MODAL
       ===================================================== */}
       {selectedExam && (
+        <ModalPortal
+          onEscape={() => {
+            if (!updating) closeExam();
+          }}
+        >
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Entrance Exam Details"
+          tabIndex={-1}
           className="
             fixed
             inset-0
@@ -1832,13 +1842,23 @@ const StaffEntranceExams = ({ confirm }) => {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* =====================================================
           EDIT EXAM MODAL
       ===================================================== */}
       {editingExam && (
+        <ModalPortal
+          onEscape={() => {
+            if (!updating) closeEditor();
+          }}
+        >
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Edit Entrance Exam"
+          tabIndex={-1}
           className="
             fixed
             inset-0
@@ -2318,6 +2338,7 @@ const StaffEntranceExams = ({ confirm }) => {
             </form>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

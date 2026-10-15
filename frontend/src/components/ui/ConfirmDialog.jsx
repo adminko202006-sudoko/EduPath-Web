@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { AlertTriangle, RefreshCw, X } from 'lucide-react';
+
+import ModalPortal from './ModalPortal';
 
 /* =========================================================
    DIALOG STATE
@@ -62,24 +64,6 @@ const useConfirmDialog = () => {
    ========================================================= */
 
 const ConfirmDialogHost = ({ dialog }) => {
-  useEffect(() => {
-    if (!dialog) {
-      return;
-    }
-
-    const handleKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        dialog.settle?.(false);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [dialog]);
-
   if (!dialog) {
     return null;
   }
@@ -111,19 +95,22 @@ const ConfirmDialogHost = ({ dialog }) => {
   }
 
   return (
-    <div
-      className="
-        fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4
-      "
-      role="dialog"
-      aria-modal="true"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          cancel();
-        }
-      }}
-    >
-      <div className="ep-card animate-scale-in w-full max-w-md p-6">
+    <ModalPortal onEscape={cancel}>
+      <div
+        className="
+          fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4
+        "
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) {
+            cancel();
+          }
+        }}
+      >
+        <div className="ep-card animate-scale-in w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain p-6">
         <div className="flex items-start gap-4">
           <div
             className={`
@@ -196,7 +183,8 @@ const ConfirmDialogHost = ({ dialog }) => {
           </button>
         </div>
       </div>
-    </div>
+      </div>
+    </ModalPortal>
   );
 };
 

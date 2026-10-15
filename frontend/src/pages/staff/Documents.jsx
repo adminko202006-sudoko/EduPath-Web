@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import ModalPortal from '../../components/ui/ModalPortal';
 
 const StaffDocuments = () => {
   const { token } = useAuth();
@@ -935,7 +936,16 @@ const StaffDocuments = () => {
 
       {/* REVIEW MODAL */}
       {selectedDocument && (
+        <ModalPortal
+          onEscape={() => {
+            if (!updating) closeDocument();
+          }}
+        >
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Review Document"
+          tabIndex={-1}
           className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-scale-in"
           onMouseDown={(event) => {
             if (
@@ -1154,6 +1164,7 @@ const StaffDocuments = () => {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

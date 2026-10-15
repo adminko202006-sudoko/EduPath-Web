@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { useConfirmDialog, ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import ModalPortal from '../../components/ui/ModalPortal';
 
 import {
   UserPlus,
@@ -1467,8 +1468,18 @@ const StaffManagement = ({ confirm }) => {
       ====================================================================== */}
 
       {showModal && (
-
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+        <ModalPortal
+          onEscape={() => {
+            if (!saving) closeModal();
+          }}
+        >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={editingStaff ? 'Edit Staff Account' : 'Create Staff Account'}
+          tabIndex={-1}
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+        >
 
           <div className="animate-scale-in flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl dark:bg-[#102334]">
 
@@ -2159,6 +2170,7 @@ const StaffManagement = ({ confirm }) => {
           </div>
 
         </div>
+        </ModalPortal>
       )}
 
     </div>

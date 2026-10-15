@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { useConfirmDialog, ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import ModalPortal from '../../components/ui/ModalPortal';
 import {
   FileText,
   Search,
@@ -804,7 +805,18 @@ function Documents({ confirm }) {
 
       {/* Review Modal */}
       {selectedDocument && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+        <ModalPortal
+          onEscape={() => {
+            if (!reviewLoading) closeReview();
+          }}
+        >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Document Review"
+          tabIndex={-1}
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+        >
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl dark:bg-gray-900">
             {/* Modal Header */}
             <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-gray-200 bg-white px-5 py-4 dark:border-gray-800 dark:bg-gray-900 sm:px-6">
@@ -1098,6 +1110,7 @@ function Documents({ confirm }) {
             </form>
           </div>                        
         </div>
+        </ModalPortal>
       )}
     </div>
   );

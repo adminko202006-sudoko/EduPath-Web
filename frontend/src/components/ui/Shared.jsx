@@ -1,5 +1,3 @@
-import { useEffect } from 'react';
-
 import {
   FileText,
   Award,
@@ -11,6 +9,8 @@ import {
 } from 'lucide-react';
 
 import { Check, Search, X } from 'lucide-react';
+
+import ModalPortal from './ModalPortal';
 
 /* =========================================================
    SHARED STATUS BADGE
@@ -211,42 +211,27 @@ const ConfirmDialog = ({
   onConfirm,
   onCancel,
 }) => {
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    const handleKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        onCancel?.();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [open, onCancel]);
-
   if (!open) {
     return null;
   }
 
   return (
-    <div
-      className="
-        fixed inset-0 z-[100] flex items-center justify-center
-        bg-black/50 p-4 animate-[ep-scale-in_180ms_ease-out]
-      "
-      role="dialog"
-      aria-modal="true"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onCancel?.();
-        }
-      }}
-    >
+    <ModalPortal onEscape={onCancel}>
+      <div
+        className="
+          fixed inset-0 z-[100] flex items-center justify-center
+          bg-black/50 p-4 animate-[ep-scale-in_180ms_ease-out]
+        "
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) {
+            onCancel?.();
+          }
+        }}
+      >
       <div className="ep-card animate-scale-in w-full max-w-md p-6">
         <div className="flex items-start gap-4">
           <div
@@ -320,7 +305,8 @@ const ConfirmDialog = ({
           </button>
         </div>
       </div>
-    </div>
+      </div>
+    </ModalPortal>
   );
 };
 

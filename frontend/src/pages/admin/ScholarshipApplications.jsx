@@ -19,6 +19,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import api from '../../services/api';
+import ModalPortal from '../../components/ui/ModalPortal';
 import { useAuth } from '../../context/AuthContext';
 
 const SkeletonCard = () => (
@@ -875,7 +876,18 @@ const AdminScholarshipApplications = () => {
 
       {/* Review Modal */}
       {showModal && selectedApplication && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+        <ModalPortal
+          onEscape={() => {
+            if (!updating) closeModal();
+          }}
+        >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Scholarship Application Review"
+          tabIndex={-1}
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm"
+        >
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl dark:bg-slate-800">
             {/* Modal Header */}
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4 dark:border-slate-700 dark:bg-slate-800 sm:px-6">
@@ -1071,6 +1083,7 @@ const AdminScholarshipApplications = () => {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

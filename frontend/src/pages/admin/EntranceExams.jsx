@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 
 import { useConfirmDialog, ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import ModalPortal from '../../components/ui/ModalPortal';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 
@@ -2151,11 +2152,18 @@ const EntranceExams = ({ confirm }) => {
       ===================================================== */}
 
       {viewingExam && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+        <ModalPortal onEscape={() => setViewingExam(null)}>
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Entrance Exam Details"
+          tabIndex={-1}
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+        >
 
           <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white dark:bg-gray-900 rounded-2xl shadow-2xl">
 
-            <div className="ep-brand-gradient px-6 py-5">
+            <div className="ep-brand-gradient sticky top-0 z-10 px-6 py-5">
 
               <div className="flex items-start justify-between gap-4">
 
@@ -2357,6 +2365,7 @@ const EntranceExams = ({ confirm }) => {
           </div>
 
         </div>
+        </ModalPortal>
       )}
 
     </div>

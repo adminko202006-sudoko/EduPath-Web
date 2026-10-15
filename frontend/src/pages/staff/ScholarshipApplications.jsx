@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
+import ModalPortal from '../../components/ui/ModalPortal';
 
 const STATUS_CONFIG = {
   pending: {
@@ -639,7 +640,14 @@ export default function ScholarshipApplications() {
 
       {/* Review Modal */}
       {selectedApplication && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+        <ModalPortal onEscape={closeReview}>
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Review Scholarship Application"
+          tabIndex={-1}
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm"
+        >
           <div className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
             <div className="flex items-center justify-between border-b border-slate-200 p-5 dark:border-slate-800">
               <div>
@@ -817,6 +825,7 @@ export default function ScholarshipApplications() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

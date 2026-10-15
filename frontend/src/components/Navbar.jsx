@@ -17,6 +17,7 @@ import {
 
 import { useAuth } from '../context/AuthContext';
 import ThemeToggle from './ThemeToggle';
+import { ConfirmDialogHost, useConfirmDialog } from './ui/ConfirmDialog';
 import tmcLogo from '../assets/tmcLogo.jpg';
 
 const ROLE_CONFIG = {
@@ -43,6 +44,7 @@ const Navbar = ({ onToggleMobileMenu }) => {
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
+  const { confirm, dialog } = useConfirmDialog();
 
   const role = user?.role?.toLowerCase() || 'applicant';
   const roleConfig = ROLE_CONFIG[role] || ROLE_CONFIG.applicant;
@@ -88,6 +90,18 @@ const Navbar = ({ onToggleMobileMenu }) => {
 
   const handleLogout = async () => {
     setDropdownOpen(false);
+
+    const confirmed = await confirm({
+      title: 'Log out of EduPath?',
+      message: 'You will need to sign in again to access your account.',
+      confirmLabel: 'Sign Out',
+      cancelLabel: 'Cancel',
+      destructive: false,
+    });
+
+    if (!confirmed) {
+      return;
+    }
 
     try {
       await logout();
@@ -300,6 +314,8 @@ const Navbar = ({ onToggleMobileMenu }) => {
           </div>
         </div>
       </div>
+
+      <ConfirmDialogHost dialog={dialog} />
     </header>
   );
 };

@@ -18,6 +18,7 @@ import {
 
 import api from '../../services/api';
 import { useConfirmDialog, ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import ModalPortal from '../../components/ui/ModalPortal';
 import { useAuth } from '../../context/AuthContext';
 
 const StatusBadge = ({ isRead }) => {
@@ -1161,7 +1162,16 @@ const StaffNotifications = ({ confirm }) => {
       ===================================================== */}
 
       {showForm && (
+        <ModalPortal
+          onEscape={() => {
+            if (!saving) closeForm();
+          }}
+        >
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Send Notification"
+          tabIndex={-1}
           className="
             fixed
             inset-0
@@ -1494,6 +1504,7 @@ const StaffNotifications = ({ confirm }) => {
             </form>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* =====================================================
@@ -1501,7 +1512,12 @@ const StaffNotifications = ({ confirm }) => {
       ===================================================== */}
 
       {selectedNotification && (
+        <ModalPortal onEscape={closeNotification}>
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Notification Details"
+          tabIndex={-1}
           className="
             fixed
             inset-0
@@ -1739,6 +1755,7 @@ const StaffNotifications = ({ confirm }) => {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

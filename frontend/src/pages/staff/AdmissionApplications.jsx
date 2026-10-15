@@ -19,6 +19,7 @@ import {
 
 import api from '../../services/api';
 import { useConfirmDialog, ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import ModalPortal from '../../components/ui/ModalPortal';
 
 const AdmissionApplications = ({ confirm }) => {
   const [applications, setApplications] = useState([]);
@@ -1035,8 +1036,13 @@ const AdmissionApplications = ({ confirm }) => {
       </div>
 
       {selectedApplication && (
+        <ModalPortal onEscape={() => setSelectedApplication(null)}>
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Application Details"
+          tabIndex={-1}
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
               setSelectedApplication(null);
@@ -1429,6 +1435,7 @@ const AdmissionApplications = ({ confirm }) => {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );
