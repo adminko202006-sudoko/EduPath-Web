@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import api from '../../services/api';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 import { EmptyState, ErrorState } from '../../components/ui/Shared';
 
 import {
@@ -25,7 +26,7 @@ const Programs = () => {
   /* ==========================================
      LOAD PROGRAMS
   ========================================== */
-  const loadPrograms = async (isRefresh = false) => {
+  const loadPrograms = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) {
         setRefreshing(true);
@@ -52,13 +53,18 @@ const Programs = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [token]);
+  useAutoRefresh(() => {
+    loadPrograms(true);
+  });
 
   useEffect(() => {
     if (token) {
-      loadPrograms();
+      queueMicrotask(() => {
+        loadPrograms();
+      });
     }
-  }, [token]);
+  }, [token, loadPrograms]);
 
   /* ==========================================
      FILTER PROGRAMS
@@ -121,7 +127,7 @@ const Programs = () => {
       {/* =====================================================
           HERO BANNER
       ====================================================== */}
-      <section className="ep-brand-gradient relative overflow-hidden rounded-2xl p-6 sm:p-8 shadow-lg text-white">
+      <section className="ep-page-banner ep-brand-gradient relative overflow-hidden rounded-2xl p-6 sm:p-8 shadow-lg text-white">
         <div className="absolute -right-20 -top-20 h-56 w-56 rounded-full bg-teal-300/10 blur-2xl pointer-events-none" />
         <div className="absolute -bottom-24 left-1/3 h-52 w-52 rounded-full bg-amber-300/10 blur-2xl pointer-events-none" />
         <div className="absolute right-1/4 top-1/2 h-24 w-24 rounded-full bg-white/5 blur-xl pointer-events-none" />
@@ -133,7 +139,7 @@ const Programs = () => {
               <span>Trinidad Municipal College • Academic Offerings</span>
             </div>
 
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight">
+            <h1 data-tutorial-target="applicant-programs-intro" className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight">
               Academic Programs
             </h1>
 

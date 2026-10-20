@@ -1,5 +1,6 @@
+import ErrorMessage from '../../components/ui/ErrorMessage';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Search,
   Users,
@@ -11,7 +12,6 @@ import {
   Eye,
   RefreshCw,
   AlertCircle,
-  UserRound,
   Archive,
   ShieldCheck,
   Filter,
@@ -20,23 +20,25 @@ import {
   Loader2,
   GraduationCap,
   SlidersHorizontal,
-  ArrowUpRight,
   RotateCcw,
 } from 'lucide-react';
 
-import {
-  useConfirmDialog,
-  ConfirmDialogHost,
-} from '../../components/ui/ConfirmDialog';
+import { ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import { useConfirmDialog } from '../../components/ui/useConfirmDialog';
+import ModalPortal from '../../components/ui/ModalPortal';
+import { LoadingState } from '../../components/ui/Shared';
 
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import api from '../../services/api';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 const inputClass =
   'w-full rounded-xl border border-gray-200/90 bg-white/70 px-4 py-3 text-sm text-gray-800 outline-none transition-colors duration-200 placeholder:text-gray-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10 dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-100 dark:placeholder:text-gray-500 dark:focus:border-teal-500 dark:focus:ring-teal-500/10';
 
 const labelClass =
   'mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400';
+
+const ApplicantDetails = lazy(() => import('./ApplicantDetails'));
 
 const Applicants = ({ confirm }) => {
   const { token } = useAuth();
@@ -47,6 +49,19 @@ const Applicants = ({ confirm }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const applicantRequestRef = useRef(0);
+  const filterTimerRef = useRef(null);
+  const invalidateApplicantRequests = useCallback(() => { applicantRequestRef.current++; }, []);
+  const [selectedApplicant, setSelectedApplicant] = useState(null);
+  const [detailsSaving, setDetailsSaving] = useState(false);
+  const detailsSavingRef = useRef(false);
+  const closeDetails = useCallback(() => {
+    if (!detailsSavingRef.current) setSelectedApplicant(null);
+  }, []);
+  const handleDetailsSaving = useCallback((busy) => {
+    detailsSavingRef.current = busy;
+    setDetailsSaving(busy);
+  }, []);
 
   const [search, setSearch] = useState('');
   const [programId, setProgramId] = useState('');
@@ -87,16 +102,15 @@ const Applicants = ({ confirm }) => {
 
   const loadApplicants = useCallback(
     async (showRefresh = false, filters = null) => {
+      const request = ++applicantRequestRef.current;
       if (!token) {
         setLoading(false);
         return;
       }
 
-      if (showRefresh) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
+      // The initial loading state is set on mount. Later requests update only
+      // the results, keeping the page and the focused filter control mounted.
+      if (showRefresh) setRefreshing(true);
 
       setError('');
 
@@ -116,6 +130,7 @@ const Applicants = ({ confirm }) => {
         });
 
         const data = response.data;
+        if (request !== applicantRequestRef.current) return;
 
         setApplicants(
           Array.isArray(data)
@@ -125,6 +140,7 @@ const Applicants = ({ confirm }) => {
               : []
         );
       } catch (err) {
+        if (request !== applicantRequestRef.current) return;
         console.error('Failed to load applicants:', err);
 
         setError(
@@ -132,22 +148,40 @@ const Applicants = ({ confirm }) => {
             'Failed to load applicants. Please try again.'
         );
       } finally {
+        if (request === applicantRequestRef.current) {
         setLoading(false);
         setRefreshing(false);
+        }
       }
     },
     [token, search, programId, status, documentStatus]
   );
+  useAutoRefresh(() => {
+    loadApplicants(true);
+    loadPrograms();
+  });
 
   useEffect(() => {
     if (!token) {
-      setLoading(false);
+      queueMicrotask(() => {
+        setLoading(false);
+      });
       return;
     }
 
-    loadPrograms();
-    loadApplicants();
-  }, [token, loadPrograms, loadApplicants]);
+    queueMicrotask(() => {
+      loadPrograms();
+    });
+  }, [token, loadPrograms]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => { loadApplicants(true); }, 250);
+    filterTimerRef.current = timer;
+    return () => {
+      clearTimeout(timer);
+      invalidateApplicantRequests();
+    };
+  }, [loadApplicants, invalidateApplicantRequests]);
 
   const sortedApplicants = useMemo(() => {
     return [...applicants].sort((a, b) => {
@@ -181,18 +215,12 @@ const Applicants = ({ confirm }) => {
     });
   }, [applicants, sortBy]);
 
-  const clearFilters = async () => {
+  const clearFilters = () => {
     setSearch('');
     setProgramId('');
     setStatus('');
     setDocumentStatus('');
 
-    await loadApplicants(false, {
-      search: '',
-      program_id: '',
-      status: '',
-      document_status: '',
-    });
   };
 
   const formatName = (applicant) => {
@@ -260,7 +288,8 @@ const Applicants = ({ confirm }) => {
   };
 
   const handleApplyFilters = () => {
-    loadApplicants(false, {
+    clearTimeout(filterTimerRef.current);
+    loadApplicants(true, {
       search: search.trim(),
       program_id: programId,
       status,
@@ -275,7 +304,7 @@ const Applicants = ({ confirm }) => {
   return (
     <div className="page-transition space-y-6 pb-8">
       {/* HERO */}
-      <section className="ep-brand-gradient relative isolate overflow-hidden rounded-3xl shadow-xl shadow-slate-950/10">
+      <section className="ep-page-banner ep-brand-gradient relative isolate overflow-hidden rounded-3xl shadow-xl shadow-slate-950/10">
         <div className="pointer-events-none absolute -right-16 -top-24 h-72 w-72 rounded-full bg-teal-300/15 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-28 left-1/3 h-64 w-64 rounded-full bg-amber-300/10 blur-3xl" />
         <div className="pointer-events-none absolute right-1/4 top-1/3 h-24 w-24 rounded-full border border-white/10" />
@@ -324,7 +353,7 @@ const Applicants = ({ confirm }) => {
 
       {/* ERROR */}
       {error && (
-        <div
+        <ErrorMessage message={error}><div
           role="alert"
           className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300"
         >
@@ -345,7 +374,7 @@ const Applicants = ({ confirm }) => {
             <RotateCcw className="h-3.5 w-3.5" />
             Retry
           </button>
-        </div>
+        </div></ErrorMessage>
       )}
 
       {/* STATISTICS */}
@@ -540,6 +569,7 @@ const Applicants = ({ confirm }) => {
             {sortedApplicants.length} result
             {sortedApplicants.length !== 1 ? 's' : ''} displayed
           </p>
+          {refreshing && <p role="status" className="mt-1 text-xs text-gray-500 dark:text-gray-400">Updating results...</p>}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -707,16 +737,12 @@ const Applicants = ({ confirm }) => {
                       <div className="flex items-center justify-end gap-2">
                         <button
                           type="button"
-                          onClick={() => {
-                            window.location.href =
-                              `/admin/applicants/${applicant.id}`;
-                          }}
+                          onClick={() => setSelectedApplicant(applicant)}
                           aria-label={`View ${formatName(applicant)}`}
                           className="inline-flex items-center gap-2 rounded-xl bg-[#123B5D] px-3.5 py-2.5 text-xs font-bold text-white shadow-sm transition-colors  hover:bg-[#0D304B] dark:bg-teal-700 dark:hover:bg-teal-600"
                         >
                           <Eye className="h-4 w-4" />
                           View
-                          <ArrowUpRight className="h-3.5 w-3.5 opacity-70" />
                         </button>
 
                         <button
@@ -741,6 +767,37 @@ const Applicants = ({ confirm }) => {
             <span>Showing {sortedApplicants.length} loaded record(s)</span>
           </div>
         </section>
+      )}
+      {selectedApplicant && (
+        <ModalPortal onEscape={closeDetails}>
+          <div
+            className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/60 p-4"
+            onMouseDown={(event) => { if (event.target === event.currentTarget) closeDetails(); }}
+          >
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="applicant-details-title"
+              aria-busy={detailsSaving}
+              className="ep-card animate-scale-in flex max-h-[calc(100dvh-2rem)] w-full max-w-7xl flex-col overflow-hidden"
+            >
+              <header className="flex shrink-0 items-center justify-between gap-4 border-b border-gray-200 px-5 py-4 dark:border-gray-700">
+                <div className="min-w-0">
+                  <h2 id="applicant-details-title" className="text-lg font-bold text-[#123B5D] dark:text-sky-300">Applicant Details</h2>
+                  <p className="truncate text-sm text-gray-500 dark:text-gray-400">{formatName(selectedApplicant)}</p>
+                </div>
+                <button type="button" onClick={closeDetails} disabled={detailsSaving} aria-label="Close applicant details" className="shrink-0 rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-800">
+                  <X size={20} />
+                </button>
+              </header>
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6">
+                <Suspense fallback={<LoadingState message="Loading applicant details..." />}>
+                  <ApplicantDetails key={selectedApplicant.id} applicantId={selectedApplicant.id} onClose={closeDetails} onSavingChange={handleDetailsSaving} />
+                </Suspense>
+              </div>
+            </section>
+          </div>
+        </ModalPortal>
       )}
     </div>
   );
@@ -851,7 +908,7 @@ const EmptyState = ({ icon: Icon, title, description, action }) => (
 
 const DashboardSkeleton = () => (
   <div className="page-transition space-y-6">
-    <section className="ep-brand-gradient overflow-hidden rounded-3xl p-6 sm:p-8">
+    <section className="ep-page-banner ep-brand-gradient overflow-hidden rounded-3xl p-6 sm:p-8">
       <div className="ep-skeleton h-5 w-40 rounded-full bg-white/20" />
       <div className="ep-skeleton mt-5 h-9 w-64 max-w-full rounded-lg bg-white/20" />
       <div className="ep-skeleton mt-4 h-4 w-full max-w-xl rounded bg-white/20" />

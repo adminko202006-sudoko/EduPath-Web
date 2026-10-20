@@ -1,3 +1,4 @@
+import ErrorMessage from '../../components/ui/ErrorMessage';
 import { useEffect, useRef, useState } from 'react';
 
 import {
@@ -25,6 +26,7 @@ const ResetPassword = () => {
   const location = useLocation();
 
   const email = location.state?.email || '';
+  const resetToken = location.state?.resetToken || '';
 
   const [password, setPassword] = useState('');
   const [passwordConfirmation, setPasswordConfirmation] =
@@ -71,7 +73,7 @@ const ResetPassword = () => {
     setSuccess('');
     setError('');
 
-    if (!email) {
+    if (!email || !resetToken) {
       setError(
         'Your password reset session is missing. Please request a new OTP.'
       );
@@ -106,6 +108,7 @@ const ResetPassword = () => {
         '/auth/reset-password-with-otp',
         {
           email,
+          reset_token: resetToken,
           password,
           password_confirmation: passwordConfirmation,
         }
@@ -634,7 +637,7 @@ const ResetPassword = () => {
                   ERROR
               ================================================== */}
               {error && (
-                <div className="mb-5 flex items-start gap-3 rounded-2xl bg-red-50 border border-red-200 px-4 py-3.5 text-red-700 text-sm shadow-sm">
+                <ErrorMessage message={error}><div className="mb-5 flex items-start gap-3 rounded-2xl bg-red-50 border border-red-200 px-4 py-3.5 text-red-700 text-sm shadow-sm">
 
                   <AlertCircle
                     size={19}
@@ -645,7 +648,7 @@ const ResetPassword = () => {
                     {error}
                   </span>
 
-                </div>
+                </div></ErrorMessage>
               )}
 
 

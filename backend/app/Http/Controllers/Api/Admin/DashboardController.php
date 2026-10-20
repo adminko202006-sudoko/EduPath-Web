@@ -15,6 +15,15 @@ use App\Models\User;
 
 class DashboardController extends Controller
 {
+    /** Sidebar polling needs counts only, not the full dashboard and its records. */
+    public function applicationCounts()
+    {
+        return response()->json(['success' => true, 'data' => [
+            'pending_applications' => AdmissionApplication::where('status', 'pending')->count(),
+            'pending_scholarship_applications' => ScholarshipApplication::where('status', 'pending')->count(),
+        ]]);
+    }
+
     /**
      * Display admin dashboard statistics.
      */
@@ -176,6 +185,7 @@ class DashboardController extends Controller
 
                 // Scholarships
                 'scholarship_applicants' => $scholarshipApplicants,
+                'pending_scholarship_applications' => ScholarshipApplication::where('status', 'pending')->count(),
                 'active_scholarships' => $activeScholarships,
 
                 // Entrance Exams

@@ -9,6 +9,7 @@ import {
   UserRound,
   GraduationCap,
   Award,
+  BookOpenCheck,
   FileText,
   CalendarDays,
   Megaphone,
@@ -22,17 +23,24 @@ import {
   CircleHelp,
 } from 'lucide-react';
 
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
+import api from '../services/api';
+import useAutoRefresh from '../hooks/useAutoRefresh';
+import useApplicationCounts from '../hooks/useApplicationCounts';
+import { STAFF_FEATURES, hasStaffPermission } from '../services/staffAccess';
+import { preloadRoute, scheduleRoutePreloads } from '../services/routePreload';
 
 const NAVIGATION = {
   admin: [
     { label: 'Dashboard', path: '/admin/dashboard', icon: LayoutDashboard },
+    { label: 'Reports & Activity', path: '/admin/reports', icon: FileText },
     { label: 'Programs', path: '/admin/programs', icon: BookOpen, permission: 'programs' },
     { label: 'Staff Management', path: '/admin/staff', icon: BriefcaseBusiness, permission: 'staff' },
     { label: 'Requirements', path: '/admin/requirements', icon: ClipboardList, permission: 'requirements' },
     { label: 'Applicants', path: '/admin/applicants', icon: Users, permission: 'applicants' },
     { label: 'Admission Applications', path: '/admin/admission-applications', icon: GraduationCap, permission: 'admission_applications' },
     { label: 'Scholarships', path: '/admin/scholarships', icon: Award, permission: 'scholarships' },
+    { label: 'Online Scholarship Exam', path: '/admin/online-exams', icon: BookOpenCheck, permission: 'scholarships' },
     { label: 'Scholarship Applications', path: '/admin/scholarship-applications', icon: FileText, permission: 'scholarship_applications' },
     { label: 'Entrance Exams', path: '/admin/exams', icon: CalendarDays, permission: 'exams' },
     { label: 'Announcements', path: '/admin/announcements', icon: Megaphone, permission: 'announcements' },
@@ -44,18 +52,15 @@ const NAVIGATION = {
 
   staff: [
     { label: 'Dashboard', path: '/staff/dashboard', icon: LayoutDashboard },
-    { label: 'Programs', path: '/staff/programs', icon: BookOpen, permission: 'programs' },
-    { label: 'Requirements', path: '/staff/requirements', icon: ClipboardList, permission: 'requirements' },
-    { label: 'Applicants', path: '/staff/applicants', icon: Users, permission: 'applicants' },
-    { label: 'Admission Applications', path: '/staff/admission-applications', icon: GraduationCap, permission: 'admission_applications' },
-    { label: 'Scholarships', path: '/staff/scholarships', icon: Award, permission: 'scholarships' },
-    { label: 'Scholarship Applications', path: '/staff/scholarship-applications', icon: FileText, permission: 'scholarship_applications' },
-    { label: 'Entrance Exams', path: '/staff/exams', icon: CalendarDays, permission: 'exams' },
-    { label: 'Announcements', path: '/staff/announcements', icon: Megaphone, permission: 'announcements' },
-    { label: 'Documents', path: '/staff/documents', icon: FileText, permission: 'documents' },
+    ...STAFF_FEATURES.map((feature) => ({ ...feature, icon: {
+      manage_admissions: GraduationCap, verify_documents: FileText,
+      manage_exams: CalendarDays, review_online_exams: BookOpenCheck, manage_scholarships: Award,
+      manage_announcements: Megaphone, send_notifications: Bell, view_reports: ClipboardList,
+    }[feature.permission] })),
     { label: 'My Profile', path: '/staff/profile', icon: UserRound },
+    { label: 'How to Use EduPath', path: '/staff/guide', icon: CircleHelp },
     { label: 'Settings', path: '/staff/settings', icon: Settings },
-    { label: 'About EduPath', path: '/staff/about', icon: Info },
+    { label: 'About EduPath', path: '/about', icon: Info },
   ],
 
   applicant: [
@@ -66,9 +71,15 @@ const NAVIGATION = {
     { label: 'My Documents', path: '/applicant/documents', icon: ClipboardList },
     { label: 'Scholarships', path: '/applicant/scholarships', icon: Award },
     { label: 'Scholarship Applications', path: '/applicant/scholarship-applications', icon: FileText },
+{
+  label: 'Online Scholarship Exam',
+  path: '/applicant/online-scholarship-exam',
+  icon: BookOpenCheck,
+},
     { label: 'Entrance Exams', path: '/applicant/exams', icon: CalendarDays },
     { label: 'Notifications', path: '/applicant/notifications', icon: Bell, notifications: true },
     { label: 'Announcements', path: '/applicant/announcements', icon: Megaphone },
+    { label: 'How to Use EduPath', path: '/applicant/guide', icon: CircleHelp },
     { label: 'Settings', path: '/applicant/settings', icon: Settings },
     { label: 'About EduPath', path: '/applicant/about', icon: Info },
   ],
@@ -100,11 +111,7 @@ const Sidebar = ({ mobileOpen = false, onCloseMobile = () => {} }) => {
   const roleDetails = ROLE_DETAILS[role] || ROLE_DETAILS.applicant;
 
   const [unreadCount, setUnreadCount] = useState(0);
-
-  const staffPermissions =
-    user?.staff?.permissions ||
-    user?.staff?.permission ||
-    {};
+  const applicationCounts = useApplicationCounts(user, token);
 
   const navigationItems = useMemo(() => {
     const items = NAVIGATION[role] || NAVIGATION.applicant;
@@ -117,9 +124,14 @@ const Sidebar = ({ mobileOpen = false, onCloseMobile = () => {} }) => {
       if (!item.permission) return true;
 
       // Keep the existing permission model: staff only see authorized sections.
-      return Boolean(staffPermissions[item.permission]);
+      return hasStaffPermission(user, item.permission);
     });
-  }, [role, staffPermissions]);
+  }, [role, user]);
+
+  useEffect(() => {
+    if (!token) return undefined;
+    return scheduleRoutePreloads(navigationItems.map((item) => item.path));
+  }, [navigationItems, token]);
 
   const fetchUnreadNotifications = useCallback(async () => {
     if (role !== 'applicant' || !token) {
@@ -128,25 +140,14 @@ const Sidebar = ({ mobileOpen = false, onCloseMobile = () => {} }) => {
     }
 
     try {
-      const response = await fetch(
-        'http://127.0.0.1:8000/api/applicant/notifications',
-        {
-          headers: {
-            Accept: 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (!response.ok) return;
-
-      const result = await response.json();
+      const response = await api.get('/applicant/notifications');
+      const result = response.data;
 
       const notifications = Array.isArray(result)
         ? result
         : result?.data || result?.notifications || [];
 
-      setUnreadCount(
+      setUnreadCount(Number.isInteger(result?.unread_count) ? result.unread_count :
         notifications.filter(
           (notification) =>
             notification.is_read === false ||
@@ -158,9 +159,12 @@ const Sidebar = ({ mobileOpen = false, onCloseMobile = () => {} }) => {
       console.error('Unable to load notification count:', error);
     }
   }, [role, token]);
+  useAutoRefresh(fetchUnreadNotifications);
 
   useEffect(() => {
-    fetchUnreadNotifications();
+    queueMicrotask(() => {
+      fetchUnreadNotifications();
+    });
 
     if (role !== 'applicant' || !token) return undefined;
 
@@ -186,7 +190,7 @@ const Sidebar = ({ mobileOpen = false, onCloseMobile = () => {} }) => {
 
   useEffect(() => {
     onCloseMobile();
-  }, [location.pathname]);
+  }, [location.pathname, onCloseMobile]);
 
   const isActiveRoute = (path) => {
     if (path.endsWith('/dashboard')) {
@@ -207,11 +211,19 @@ const Sidebar = ({ mobileOpen = false, onCloseMobile = () => {} }) => {
       {navigationItems.map((item) => {
         const Icon = item.icon;
         const active = isActiveRoute(item.path);
+        const applicationCount = role === 'admin' || role === 'staff'
+          ? (item.path.endsWith('/admission-applications') ? applicationCounts.admissions
+            : item.path.endsWith('/scholarship-applications') ? applicationCounts.scholarships : 0)
+          : 0;
 
         return (
           <NavLink
             key={item.path}
+            data-tutorial-target={role === 'applicant' ? `applicant-nav-${item.path.split('/').pop()}` : undefined}
             to={item.path}
+            onPointerEnter={() => { void preloadRoute(item.path); }}
+            onFocus={() => { void preloadRoute(item.path); }}
+            onPointerDown={() => { void preloadRoute(item.path); }}
             onClick={onCloseMobile}
             aria-current={active ? 'page' : undefined}
             className={() =>
@@ -261,7 +273,17 @@ const Sidebar = ({ mobileOpen = false, onCloseMobile = () => {} }) => {
               </span>
             )}
 
-            {!item.notifications && active && (
+            {applicationCount > 0 && (
+              <span
+                className={`flex shrink-0 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white shadow-sm ${applicationCount === 1 ? 'h-2.5 w-2.5' : 'h-5 min-w-5 px-1'}`}
+                aria-label={`${applicationCount} pending ${item.label.toLowerCase()}`}
+                title={`${applicationCount} pending ${item.label.toLowerCase()}`}
+              >
+                {applicationCount > 1 ? (applicationCount > 99 ? '99+' : applicationCount) : null}
+              </span>
+            )}
+
+            {!item.notifications && applicationCount === 0 && active && (
               <ChevronRight
                 size={15}
                 className="shrink-0 text-white/70 dark:text-teal-300"
@@ -294,6 +316,7 @@ const Sidebar = ({ mobileOpen = false, onCloseMobile = () => {} }) => {
 
       <aside
         className={`
+          ep-sidebar
           fixed bottom-0 left-0 top-20 z-[70]
           flex w-[280px] flex-col
           border-r border-slate-200/80

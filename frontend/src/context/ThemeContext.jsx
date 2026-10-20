@@ -1,6 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-const ThemeContext = createContext(null);
+import { ThemeContext } from './themeContextInstance';
+
 const STORAGE_KEY = 'edupath_appearance';
 const LEGACY_KEYS = ['edupath_admin_appearance', 'edupath_staff_appearance'];
 
@@ -13,13 +14,13 @@ function readSavedTheme() {
       const legacy = window.localStorage.getItem(key);
       if (legacy === 'dark' || legacy === 'light') return legacy;
     }
-  } catch (error) {
+  } catch {
     // Storage can be unavailable in private browsing or restricted contexts.
   }
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
-export function applyEduPathTheme(theme) {
+function applyEduPathTheme(theme) {
   if (typeof document === 'undefined') return;
   const normalized = theme === 'dark' ? 'dark' : 'light';
   document.documentElement.classList.toggle('dark', normalized === 'dark');
@@ -41,7 +42,7 @@ export function ThemeProvider({ children }) {
       window.localStorage.setItem(STORAGE_KEY, normalized);
       // Keep older portal-specific keys in sync for compatibility with older builds.
       LEGACY_KEYS.forEach((key) => window.localStorage.setItem(key, normalized));
-    } catch (error) {
+    } catch {
       // Theme still works for the current session when storage is unavailable.
     }
     setThemeState(normalized);
@@ -62,10 +63,4 @@ export function ThemeProvider({ children }) {
   }, []);
 
   return <ThemeContext.Provider value={{ theme, setTheme }}>{children}</ThemeContext.Provider>;
-}
-
-export function useTheme() {
-  const context = useContext(ThemeContext);
-  if (!context) throw new Error('useTheme must be used inside ThemeProvider');
-  return context;
 }

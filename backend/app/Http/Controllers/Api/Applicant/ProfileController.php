@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Applicant;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB;
 
 class ProfileController extends Controller
 {
@@ -48,78 +49,43 @@ class ProfileController extends Controller
             'phone' => 'nullable|string|max:30',
             'address' => 'nullable|string|max:500',
 
+            'primary_school' => 'sometimes|nullable|string|max:255',
+            'primary_school_year' => ['sometimes', 'nullable', 'string', 'regex:/^[0-9]{4}$/'],
+            'junior_high_school' => 'sometimes|nullable|string|max:255',
+            'senior_high_school' => 'sometimes|nullable|string|max:255',
+            'shs_strand' => 'sometimes|nullable|string|max:100',
+            'lrn' => ['sometimes', 'nullable', 'string', 'regex:/^[0-9]{12}$/'],
+            'previous_college_university' => 'sometimes|nullable|string|max:255',
+
             'profile_photo' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
         ]);
 
-        /*
-        |--------------------------------------------------------------------------
-        | Update Applicant Information
-        |--------------------------------------------------------------------------
-        */
-
-        if ($applicant) {
-
-            $applicantData = collect($validated)
-                ->only([
-                    'first_name',
-                    'middle_name',
-                    'last_name',
-                    'birth_date',
-                    'gender',
-                    'phone',
-                    'address',
-                ])
-                ->toArray();
-
-            /*
-            |--------------------------------------------------------------------------
-            | Upload Profile Photo
-            |--------------------------------------------------------------------------
-            */
-
-            if ($request->hasFile('profile_photo')) {
-
-                // Delete the old profile photo
-                if ($applicant->profile_photo) {
-                    Storage::disk('public')->delete(
-                        $applicant->profile_photo
-                    );
-                }
-
-                // Store the new profile photo
-                $path = $request
-                    ->file('profile_photo')
-                    ->store('profile_photos', 'public');
-
-                $applicantData['profile_photo'] = $path;
-            }
-
-            $applicant->update($applicantData);
-
-            /*
-            |--------------------------------------------------------------------------
-            | Keep User Name Synchronized
-            |--------------------------------------------------------------------------
-            */
-
-            $updatedApplicant = $applicant->fresh();
-
-            $fullName = implode(' ', array_filter([
-                $updatedApplicant->first_name,
-                $updatedApplicant->middle_name,
-                $updatedApplicant->last_name,
-            ]));
-
-            $user->update([
-                'name' => $fullName,
-            ]);
+        if (!$applicant) {
+            return response()->json(['success' => false, 'message' => 'Applicant profile not found.'], 403);
         }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Refresh Data
-        |--------------------------------------------------------------------------
-        */
+        $applicantData = collect($validated)->except('profile_photo')->toArray();
+        $newPhoto = null;
+        if ($request->hasFile('profile_photo')) {
+            $newPhoto = $request->file('profile_photo')->store('profile_photos', 'public');
+            if (!$newPhoto) {
+                return response()->json(['success' => false, 'message' => 'The profile picture could not be stored. Please try again.'], 503);
+            }
+            $applicantData['profile_photo'] = $newPhoto;
+        }
+        try {
+            DB::transaction(function () use ($applicant, $user, $applicantData) {
+                $applicant->update($applicantData);
+                $fullName = implode(' ', array_filter([$applicant->first_name, $applicant->middle_name, $applicant->last_name]));
+                if ($fullName !== '') $user->update(['name' => $fullName]);
+            });
+        } catch (\Throwable $error) {
+            if ($newPhoto) {
+                try { Storage::disk('public')->delete($newPhoto); }
+                catch (\Throwable $cleanupError) { report($cleanupError); }
+            }
+            throw $error;
+        }
+        // Preserve existing uploads when replacing the profile picture.
 
         $user = $user->fresh();
         $applicant = $user->applicant?->fresh();

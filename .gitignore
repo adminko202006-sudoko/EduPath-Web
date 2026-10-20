@@ -21,3 +21,12 @@ yarn-error.log
 /.nova
 /.vscode
 /.zed
+/backend/.env
+/backend/.env.*
+!/backend/.env.example
+!/backend/.env.production.example
+/frontend/.env.local
+/frontend/.env.*.local
+/backend/storage/app/firebase-credentials*.json
+/backend/storage/app/edupath-backups/
+/backend/storage/app/private/

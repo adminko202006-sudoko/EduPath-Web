@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import {
@@ -22,13 +23,17 @@ import {
   Loader2,
 } from 'lucide-react';
 
-import { useConfirmDialog, ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import { ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import { useConfirmDialog } from '../../components/ui/useConfirmDialog';
 
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import api from '../../services/api';
+import { openPrivateDocument } from '../../services/documentFile';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
-const AdmissionApplicationDetails = ({ confirm }) => {
-  const { id } = useParams();
+const AdmissionApplicationDetails = ({ confirm, applicationId, onClose, onBusyChange }) => {
+  const { id: routeId } = useParams();
+  const id = applicationId ?? routeId;
   const navigate = useNavigate();
   const { token } = useAuth();
 
@@ -36,12 +41,13 @@ const AdmissionApplicationDetails = ({ confirm }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  const actionRef = useRef(false);
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [remarks, setRemarks] = useState('');
 
-  const loadApplication = async () => {
+  const loadApplication = useCallback(async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError('');
 
       const response = await api.get(
@@ -68,15 +74,20 @@ const AdmissionApplicationDetails = ({ confirm }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id, token]);
+  useAutoRefresh(() => {
+    if (!actionRef.current) loadApplication(true);
+  });
 
   useEffect(() => {
     if (!token || !id) {
       return;
     }
 
-    loadApplication();
-  }, [token, id]);
+    queueMicrotask(() => {
+      loadApplication();
+    });
+  }, [token, id, loadApplication]);
 
   const formatName = (applicant) => {
     if (!applicant) {
@@ -148,6 +159,7 @@ const AdmissionApplicationDetails = ({ confirm }) => {
   };
 
   const handleApprove = async () => {
+    if (actionRef.current) return;
     const confirmed = await confirm({
       title: 'Approve Application',
       message: 'Are you sure you want to approve this admission application?',
@@ -159,6 +171,9 @@ const AdmissionApplicationDetails = ({ confirm }) => {
       return;
     }
 
+    if (actionRef.current) return;
+    actionRef.current = true;
+    onBusyChange?.(true);
     try {
       setActionLoading(true);
       setError('');
@@ -191,12 +206,15 @@ const AdmissionApplicationDetails = ({ confirm }) => {
           'Failed to approve admission application.'
       );
     } finally {
+      actionRef.current = false;
+      onBusyChange?.(false);
       setActionLoading(false);
     }
   };
 
   const handleReject = async (e) => {
     e.preventDefault();
+    if (actionRef.current) return;
 
     const confirmed = await confirm({
       title: 'Reject Application',
@@ -208,6 +226,9 @@ const AdmissionApplicationDetails = ({ confirm }) => {
       return;
     }
 
+    if (actionRef.current) return;
+    actionRef.current = true;
+    onBusyChange?.(true);
     try {
       setActionLoading(true);
       setError('');
@@ -244,8 +265,16 @@ const AdmissionApplicationDetails = ({ confirm }) => {
           'Failed to reject admission application.'
       );
     } finally {
+      actionRef.current = false;
+      onBusyChange?.(false);
       setActionLoading(false);
     }
+  };
+
+  const handleBack = () => {
+    if (actionRef.current) return;
+    if (onClose) onClose();
+    else navigate('/admin/admission-applications');
   };
 
   /*
@@ -382,16 +411,14 @@ const AdmissionApplicationDetails = ({ confirm }) => {
 
   if (error && !application) {
     return (
-      <div className="space-y-6 page-transition">
+      <ErrorMessage message={error}><div className="space-y-6 page-transition">
         <button
           type="button"
-          onClick={() =>
-            navigate('/admin/admission-applications')
-          }
+          onClick={handleBack}
           className="inline-flex items-center gap-2 text-sm font-semibold text-[#123B5D] dark:text-blue-400 hover:text-[#0F3553] dark:hover:text-blue-300 transition-colors"
         >
           <ArrowLeft size={17} />
-          Back to Admission Applications
+          {onClose ? 'Close details' : 'Back to Admission Applications'}
         </button>
 
         <div className="ep-card rounded-2xl border border-red-200 dark:border-red-500/20 p-6 animate-fade-up">
@@ -414,7 +441,7 @@ const AdmissionApplicationDetails = ({ confirm }) => {
             </div>
           </div>
         </div>
-      </div>
+      </div></ErrorMessage>
     );
   }
 
@@ -423,13 +450,11 @@ const AdmissionApplicationDetails = ({ confirm }) => {
       <div className="space-y-6 page-transition">
         <button
           type="button"
-          onClick={() =>
-            navigate('/admin/admission-applications')
-          }
+          onClick={handleBack}
           className="inline-flex items-center gap-2 text-sm font-semibold text-[#123B5D] dark:text-blue-400 hover:text-[#0F3553] dark:hover:text-blue-300 transition-colors"
         >
           <ArrowLeft size={17} />
-          Back to Admission Applications
+          {onClose ? 'Close details' : 'Back to Admission Applications'}
         </button>
 
         <div className="ep-card rounded-2xl p-12 text-center animate-scale-in">
@@ -467,18 +492,16 @@ const AdmissionApplicationDetails = ({ confirm }) => {
       {/* Back Button */}
       <button
         type="button"
-        onClick={() =>
-          navigate('/admin/admission-applications')
-        }
+        onClick={handleBack}
         className="inline-flex items-center gap-2 text-sm font-semibold text-[#123B5D] dark:text-blue-400 hover:text-[#0F3553] dark:hover:text-blue-300 transition-colors"
       >
         <ArrowLeft size={17} />
-        Back to Admission Applications
+        {onClose ? 'Close details' : 'Back to Admission Applications'}
       </button>
 
       {/* Error Message */}
       {error && (
-        <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-2xl p-4 animate-fade-up">
+        <ErrorMessage message={error}><div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-2xl p-4 animate-fade-up">
           <div className="flex items-start gap-3">
             <AlertCircle
               size={20}
@@ -495,11 +518,11 @@ const AdmissionApplicationDetails = ({ confirm }) => {
               </p>
             </div>
           </div>
-        </div>
+        </div></ErrorMessage>
       )}
 
       {/* Hero */}
-      <div className="relative overflow-hidden rounded-2xl ep-brand-gradient shadow-lg animate-fade-up">
+      <div className="ep-page-banner relative overflow-hidden rounded-2xl ep-brand-gradient shadow-lg animate-fade-up">
         {/* Decorative circles */}
         <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full bg-white/5" />
         <div className="absolute -bottom-20 -left-12 w-52 h-52 rounded-full bg-white/5" />
@@ -788,12 +811,19 @@ const AdmissionApplicationDetails = ({ confirm }) => {
                       {document.file_path && (
                         <button
                           type="button"
-                          onClick={() =>
-                            window.open(
-                              `http://127.0.0.1:8000/storage/${document.file_path}`,
-                              '_blank'
-                            )
-                          }
+                          onClick={async () => {
+                            try {
+                              // Authenticated endpoint instead of the public
+                              // /storage/ link, so access stays authorized.
+                              await openPrivateDocument(
+                                `/admin/documents/${document.id}/file`
+                              );
+                            } catch {
+                              setError(
+                                'Unable to open the document right now. Please try again.'
+                              );
+                            }
+                          }}
                           className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-[#123B5D]/10 dark:bg-blue-500/10 text-[#123B5D] dark:text-blue-400 hover:bg-[#123B5D] dark:hover:bg-blue-600 hover:text-white transition-colors"
                           title="View document"
                         >
@@ -1053,12 +1083,12 @@ const DateInfoCard = ({ label, date }) => {
   );
 };
 
-const AdmissionApplicationDetailsWrapper = () => {
+const AdmissionApplicationDetailsWrapper = (props) => {
   const { confirm, dialog } = useConfirmDialog();
 
   return (
     <>
-      <AdmissionApplicationDetails confirm={confirm} />
+      <AdmissionApplicationDetails {...props} confirm={confirm} />
 
       <ConfirmDialogHost dialog={dialog} />
     </>

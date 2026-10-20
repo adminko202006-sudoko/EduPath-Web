@@ -24,15 +24,15 @@ class FcmService
             return false;
         }
 
-        $credentialsPath = storage_path('app/firebase-credentials.json');
-        if (!file_exists($credentialsPath)) {
-            Log::warning('FCM Push Skipped: storage/app/firebase-credentials.json not found.');
+        $credentialsPath = config('services.firebase.credentials') ?: storage_path('app/firebase-credentials.json');
+        if (!is_file($credentialsPath) || !is_readable($credentialsPath)) {
+            Log::warning('FCM push unavailable: private credentials are missing or unreadable.');
             return false;
         }
 
         $credentials = json_decode(file_get_contents($credentialsPath), true);
-        if (!$credentials || empty($credentials['project_id'])) {
-            Log::error('FCM Push Failed: Invalid firebase-credentials.json format.');
+        if (!$credentials || empty($credentials['project_id']) || empty($credentials['client_email']) || empty($credentials['private_key'])) {
+            Log::error('FCM push unavailable: invalid private credentials configuration.');
             return false;
         }
 
@@ -45,7 +45,7 @@ class FcmService
         }
 
         $url = "https://fcm.googleapis.com/v1/projects/{$projectId}/messages:send";
-        $success = false;
+        $success = true;
 
         foreach ($tokenList as $fcmToken) {
             try {
@@ -68,13 +68,14 @@ class FcmService
                     'Content-Type' => 'application/json',
                 ])->post($url, $payload);
 
-                if ($response->successful()) {
-                    $success = true;
-                } else {
-                    Log::error('FCM v1 Push Notification failed for token ' . substr($fcmToken, 0, 10) . '... Response: ' . $response->body());
+                if (!$response->successful()) {
+                    $success = false;
+                    // Provider bodies may contain private device/message details.
+                    Log::error('FCM push rejected by provider.', ['http_status' => $response->status()]);
                 }
             } catch (\Exception $e) {
-                Log::error('FCM v1 Push Exception: ' . $e->getMessage());
+                $success = false;
+                Log::error('FCM push transport failed.', ['exception_class' => get_class($e)]);
             }
         }
 
@@ -129,7 +130,7 @@ class FcmService
                 return $response->json('access_token');
             }
 
-            Log::error('FCM Service: OAuth2 Token Exchange failed: ' . $response->body());
+            Log::error('FCM OAuth2 token exchange failed.', ['http_status' => $response->status()]);
             return null;
         });
     }

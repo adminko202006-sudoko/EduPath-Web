@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import Navbar from '../components/Navbar';
 import Sidebar from '../components/Sidebar';
 import KeepAliveOutlet from '../components/KeepAliveOutlet';
@@ -7,10 +7,10 @@ import KeepAliveOutlet from '../components/KeepAliveOutlet';
 const AdminLayout = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const closeMobileMenu = () => setMobileMenuOpen(false);
+  const closeMobileMenu = useCallback(() => setMobileMenuOpen(false), []);
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#f4f7fa] text-slate-800 transition-colors duration-200 dark:bg-[#020d26] dark:text-slate-100">
+    <div className="ep-workspace flex h-screen flex-col overflow-hidden bg-[#f4f7fa] text-slate-800 transition-colors duration-200 dark:bg-[#020d26] dark:text-slate-100">
       <Navbar
         onToggleMobileMenu={() => setMobileMenuOpen((previous) => !previous)}
       />

@@ -51,6 +51,22 @@ class ScholarshipController extends Controller
     {
         $applicant = $request->user()->applicant;
 
+        if (!$applicant) {
+            return response()->json(['success' => false, 'message' => 'Applicant profile not found.'], 403);
+        }
+
+        // Formal applications require approved admission unless the scholarship
+        // carries an official, documented exception configured by Admin.
+        if ($scholarship->admission_approval_required && !\Illuminate\Support\Facades\DB::table('admission_applications')
+            ->where('applicant_id', $applicant->id)
+            ->where('status', 'approved')
+            ->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Your admission application must be approved before applying for this scholarship.',
+            ], 403);
+        }
+
         // Check if the scholarship is active.
         if (!$scholarship->is_active) {
             return response()->json([
@@ -59,26 +75,23 @@ class ScholarshipController extends Controller
             ], 400);
         }
 
-        // Check the application start date.
-        if (
-            $scholarship->application_start &&
-            now()->startOfDay()->lt(
-                $scholarship->application_start->startOfDay()
-            )
-        ) {
+        // Precise UTC window for new records; legacy date fields remain supported.
+        $startsAt = $scholarship->application_start_at;
+        if (!$startsAt && $scholarship->application_start) {
+            $startsAt = $scholarship->application_start->copy()->startOfDay();
+        }
+        if ($startsAt && now()->lt($startsAt)) {
             return response()->json([
                 'success' => false,
                 'message' => 'The application period has not started yet.',
             ], 400);
         }
 
-        // Check the application end date.
-        if (
-            $scholarship->application_end &&
-            now()->startOfDay()->gt(
-                $scholarship->application_end->startOfDay()
-            )
-        ) {
+        $endsAt = $scholarship->application_end_at;
+        if (!$endsAt && $scholarship->application_end) {
+            $endsAt = $scholarship->application_end->copy()->endOfDay();
+        }
+        if ($endsAt && now()->gt($endsAt)) {
             return response()->json([
                 'success' => false,
                 'message' => 'The application period for this scholarship has ended.',
@@ -101,26 +114,7 @@ class ScholarshipController extends Controller
             ], 409);
         }
 
-        // Check available slots.
-        if ($scholarship->available_slots !== null) {
-            $applicationCount = ScholarshipApplication::where(
-                'scholarship_id',
-                $scholarship->id
-            )
-                ->whereIn('status', [
-                    'pending',
-                    'under_review',
-                    'approved',
-                ])
-                ->count();
-
-            if ($applicationCount >= $scholarship->available_slots) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'This scholarship has reached its available application slots.',
-                ], 400);
-            }
-        }
+        // Awards are not restricted by fixed slot counts.
 
         $validated = $request->validate([
             'remarks' => 'nullable|string',

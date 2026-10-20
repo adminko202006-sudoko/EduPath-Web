@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import api from '../../services/api';
-import { StatusBadge } from '../../components/ui/Shared';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
+import { ErrorState, StatusBadge } from '../../components/ui/Shared';
 
 import {
   FileText,
@@ -26,7 +27,7 @@ const ApplicantDashboard = () => {
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [, setError] = useState('');
+  const [error, setError] = useState('');
 
   // Real backend data states
   const [admissionApp, setAdmissionApp] = useState(null);
@@ -39,7 +40,7 @@ const ApplicantDashboard = () => {
   /* =========================================================
      FETCH DASHBOARD DATA
   ========================================================= */
-  const fetchDashboardData = async (isRefresh = false) => {
+  const fetchDashboardData = useCallback(async (isRefresh = false) => {
     if (!token) return;
 
     try {
@@ -68,6 +69,10 @@ const ApplicantDashboard = () => {
         api.get('/applicant/exams', { headers }),
         api.get('/applicant/notifications', { headers }),
       ]);
+
+      if ([admissionsRes, documentsRes, scholarshipAppsRes, scholarshipsRes, examsRes, notificationsRes].some(result => result.status === 'rejected')) {
+        setError('Unable to load some dashboard information. Please try refreshing.');
+      }
 
       // 1. Admission Application
       if (admissionsRes.status === 'fulfilled') {
@@ -112,11 +117,16 @@ const ApplicantDashboard = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [token]);
+  useAutoRefresh(() => {
+    fetchDashboardData(true);
+  });
 
   useEffect(() => {
-    fetchDashboardData();
-  }, [token]);
+    queueMicrotask(() => {
+      fetchDashboardData();
+    });
+  }, [token, fetchDashboardData]);
 
   /* =========================================================
      DATE & TIME HELPERS
@@ -298,10 +308,11 @@ const ApplicantDashboard = () => {
   ========================================================= */
   return (
     <div className="space-y-8 page-transition">
+      {error && <ErrorState message={error} onRetry={() => fetchDashboardData(true)} />}
       {/* =====================================================
           HERO BANNER
       ====================================================== */}
-      <section className="ep-brand-gradient relative overflow-hidden rounded-2xl p-6 sm:p-8 shadow-lg text-white">
+      <section className="ep-page-banner ep-brand-gradient relative overflow-hidden rounded-2xl p-6 sm:p-8 shadow-lg text-white">
         <div className="absolute -right-20 -top-20 h-56 w-56 rounded-full bg-teal-300/10 blur-2xl pointer-events-none" />
         <div className="absolute -bottom-24 left-1/3 h-52 w-52 rounded-full bg-amber-300/10 blur-2xl pointer-events-none" />
         <div className="absolute right-1/4 top-1/2 h-24 w-24 rounded-full bg-white/5 blur-xl pointer-events-none" />
@@ -313,7 +324,7 @@ const ApplicantDashboard = () => {
               <span>Trinidad Municipal College • EduPath</span>
             </div>
 
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight">
+            <h1 data-tutorial-target="applicant-welcome-intro" className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight">
               Welcome, {user?.name || 'Applicant'}!
             </h1>
 

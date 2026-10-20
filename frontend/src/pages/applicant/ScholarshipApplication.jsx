@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Award,
   CalendarDays,
@@ -17,8 +18,9 @@ import {
   ExternalLink,
   ClipboardList,
 } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import api from '../../services/api';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 import ModalPortal from '../../components/ui/ModalPortal';
 
 const STATUS_CONFIG = {
@@ -35,7 +37,7 @@ const STATUS_CONFIG = {
       'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/20',
   },
   approved: {
-    label: 'Approved',
+    label: 'Approved for eligibility',
     icon: CheckCircle2,
     classes:
       'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/20',
@@ -114,7 +116,7 @@ export default function ScholarshipApplication() {
 
   const [selectedApplication, setSelectedApplication] = useState(null);
 
-  const loadApplications = async (isRefresh = false) => {
+  const loadApplications = useCallback(async (isRefresh = false) => {
     if (isRefresh) {
       setRefreshing(true);
     } else {
@@ -143,13 +145,18 @@ export default function ScholarshipApplication() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [token]);
+  useAutoRefresh(() => {
+    loadApplications(true);
+  });
 
   useEffect(() => {
     if (token) {
-      loadApplications();
+      queueMicrotask(() => {
+        loadApplications();
+      });
     }
-  }, [token]);
+  }, [token, loadApplications]);
 
   const counts = useMemo(
     () => ({
@@ -205,7 +212,7 @@ export default function ScholarshipApplication() {
       <div className="mx-auto max-w-7xl space-y-6">
         {/* Hero */}
         <section className="ep-card overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="ep-brand-gradient p-6 text-white sm:p-8">
+          <div className="ep-page-banner ep-brand-gradient p-6 text-white sm:p-8">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-start gap-4">
                 <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/15">
@@ -278,10 +285,10 @@ export default function ScholarshipApplication() {
         </section>
 
         {error && (
-          <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
+          <ErrorMessage message={error}><div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
             <AlertCircle size={18} className="mt-0.5 shrink-0" />
             <span>{error}</span>
-          </div>
+          </div></ErrorMessage>
         )}
 
         {/* Applications */}
@@ -442,6 +449,8 @@ export default function ScholarshipApplication() {
                 </h3>
 
                 <StatusBadge status={selectedApplication.status} />
+                <p className="mt-3 text-sm">Application approval does not automatically grant an award. Final award: <strong>{(selectedApplication.award_status || 'undecided').replaceAll('_', ' ')}</strong>.</p>
+                {selectedApplication.award_remarks && <p className="mt-2 text-sm">Award remarks: {selectedApplication.award_remarks}</p>}
               </div>
 
               {selectedApplication.scholarship?.provider && (

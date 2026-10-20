@@ -96,12 +96,25 @@ const focusElement = (element) => {
 /* Only the most recently opened dialog reacts to Escape/Tab so
    stacked dialogs never fight over the keyboard. */
 const dialogStack = [];
+const backgroundState = new Map();
+
+// Inert removes the application and lower dialogs from keyboard, pointer,
+// and accessibility navigation. Preserve any pre-existing inert state.
+const syncBackground = () => {
+  const top = dialogStack[dialogStack.length - 1]?.container;
+  for (const element of document.body.children) {
+    if (element === top) continue;
+    if (!backgroundState.has(element)) backgroundState.set(element, element.inert);
+    element.inert = true;
+  }
+  if (top) top.inert = false;
+};
 
 /* =========================================================
    COMPONENT
    ========================================================= */
 
-const ModalPortal = ({ children, onEscape }) => {
+const ModalPortal = ({ children, onEscape, priority = 0 }) => {
   const containerRef = useRef(null);
   const onEscapeRef = useRef(onEscape);
 
@@ -111,17 +124,24 @@ const ModalPortal = ({ children, onEscape }) => {
   });
 
   useEffect(() => {
-    const instance = {};
-    dialogStack.push(instance);
-
-    lockPageScroll();
-
+    // Let the applicant tour restore its temporary inert states before this
+    // modal records background state and takes ownership of keyboard focus.
+    window.dispatchEvent(new Event('edupath:modal-opening'));
     const previouslyFocused =
       document.activeElement && document.activeElement !== document.body
         ? document.activeElement
         : null;
+    const instance = { container: containerRef.current, priority };
+    dialogStack.push(instance);
+    dialogStack.sort((a, b) => a.priority - b.priority);
+    syncBackground();
+    const observer = new MutationObserver(syncBackground);
+    observer.observe(document.body, { childList: true });
+
+    lockPageScroll();
 
     const focusFrame = window.requestAnimationFrame(() => {
+      if (dialogStack[dialogStack.length - 1] !== instance) return;
       const container = containerRef.current;
 
       if (!container) return;
@@ -179,21 +199,40 @@ const ModalPortal = ({ children, onEscape }) => {
     };
 
     document.addEventListener('keydown', handleKeyDown);
+    const handleFocusIn = (event) => {
+      if (dialogStack[dialogStack.length - 1] !== instance) return;
+      const container = containerRef.current;
+      if (container && !container.contains(event.target)) {
+        focusElement(container.querySelector('[role="dialog"]') || container.firstElementChild);
+      }
+    };
+    document.addEventListener('focusin', handleFocusIn);
 
     return () => {
       window.cancelAnimationFrame(focusFrame);
       document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('focusin', handleFocusIn);
+      observer.disconnect();
 
       const index = dialogStack.indexOf(instance);
       if (index !== -1) dialogStack.splice(index, 1);
+      if (dialogStack.length) {
+        syncBackground();
+      } else {
+        backgroundState.forEach((inert, element) => { element.inert = inert; });
+        backgroundState.clear();
+      }
 
       unlockPageScroll();
 
-      if (previouslyFocused && previouslyFocused.isConnected) {
+      if (previouslyFocused && previouslyFocused.isConnected && !previouslyFocused.closest('[inert]')) {
         focusElement(previouslyFocused);
+      } else if (dialogStack.length) {
+        const top = dialogStack[dialogStack.length - 1].container;
+        focusElement(top?.querySelector('[role="dialog"]') || top?.firstElementChild);
       }
     };
-  }, []);
+  }, [priority]);
 
   // `display: contents` keeps the children' DOM structure untouched
   // while giving us an element to query for the dialog subtree.

@@ -1,8 +1,10 @@
+import ErrorMessage from './ui/ErrorMessage';
 import { Navigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
+import { Link } from 'react-router-dom';
 
 const ProtectedRoute = ({ children, role }) => {
-  const { user, loading } = useAuth();
+  const { user, loading, sessionError, retrySession } = useAuth();
 
   if (loading) {
     return (
@@ -45,6 +47,22 @@ const ProtectedRoute = ({ children, role }) => {
           </div>
         </div>
       </div>
+    );
+  }
+
+  if (sessionError) {
+    return (
+      <ErrorMessage message={sessionError}><main className="flex min-h-screen items-center justify-center bg-[#F4F7FA] p-4 text-[#123B5D] dark:bg-[#071521] dark:text-slate-100">
+        <section role="alert" className="ep-card w-full max-w-lg space-y-5 p-6 sm:p-8">
+          <p className="text-xs font-bold uppercase tracking-wider text-[#0F766E] dark:text-teal-300">Trinidad Municipal College · EduPath</p>
+          <h1 className="text-2xl font-bold">Unable to verify your session</h1>
+          <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">{sessionError}</p>
+          <div className="flex flex-wrap gap-3">
+            <button type="button" onClick={retrySession} className="rounded-xl bg-[#123B5D] px-5 py-3 text-sm font-semibold text-white hover:bg-[#0B2941]">Try again</button>
+            <Link to="/login" className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold dark:border-slate-600">Go to sign in</Link>
+          </div>
+        </section>
+      </main></ErrorMessage>
     );
   }
 

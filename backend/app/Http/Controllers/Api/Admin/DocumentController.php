@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Http\Controllers\Concerns\ServesApplicationDocumentFiles;
 use App\Http\Controllers\Controller;
 use App\Models\ApplicationDocument;
 use App\Models\ApplicationDocumentHistory;
@@ -11,6 +12,8 @@ use Illuminate\Support\Facades\Storage;
 
 class DocumentController extends Controller
 {
+    use ServesApplicationDocumentFiles;
+
     /**
      * Display all applicant documents.
      */
@@ -48,6 +51,14 @@ class DocumentController extends Controller
     }
 
     /**
+     * Stream the uploaded file for a document (admin only).
+     */
+    public function file(ApplicationDocument $document)
+    {
+        return $this->serveApplicationDocumentFile($document);
+    }
+
+    /**
      * Update document review status.
      */
     public function update(
@@ -59,80 +70,7 @@ class DocumentController extends Controller
             'remarks' => 'nullable|string',
         ]);
 
-        $oldStatus = $document->status;
-        $newStatus = $validated['status'];
-
-        $document->update([
-            'status' => $newStatus,
-            'remarks' => $validated['remarks'] ?? null,
-        ]);
-
-        // Record document status history.
-        ApplicationDocumentHistory::create([
-            'application_document_id' => $document->id,
-            'user_id' => $request->user()->id,
-            'action' => 'status_updated',
-            'old_status' => $oldStatus,
-            'new_status' => $newStatus,
-            'remarks' => $validated['remarks'] ?? null,
-        ]);
-
-        $applicant = $document->admissionApplication?->applicant;
-
-        if ($applicant && $applicant->user) {
-
-            $title = match ($newStatus) {
-                'verified' => 'Document Verified',
-                'under_review' => 'Document Under Review',
-                'rejected' => 'Document Rejected',
-                'pending' => 'Document Pending Review',
-                default => 'Document Status Updated',
-            };
-
-            $message = match ($newStatus) {
-                'verified' =>
-                    "Your {$document->document_name} has been verified."
-                    . (
-                        $validated['remarks']
-                            ? " Remarks: {$validated['remarks']}"
-                            : ''
-                    ),
-
-                'under_review' =>
-                    "Your {$document->document_name} is currently under review."
-                    . (
-                        $validated['remarks']
-                            ? " Remarks: {$validated['remarks']}"
-                            : ''
-                    ),
-
-                'rejected' =>
-                    "Your {$document->document_name} has been rejected."
-                    . (
-                        $validated['remarks']
-                            ? " Remarks: {$validated['remarks']}"
-                            : ''
-                    ),
-
-                'pending' =>
-                    "Your {$document->document_name} is pending review."
-                    . (
-                        $validated['remarks']
-                            ? " Remarks: {$validated['remarks']}"
-                            : ''
-                    ),
-
-                default =>
-                    "The status of your {$document->document_name} has been updated.",
-            };
-
-            Notification::create([
-                'user_id' => $applicant->user->id,
-                'title' => $title,
-                'message' => $message,
-                'is_read' => false,
-            ]);
-        }
+        app(\App\Services\WorkflowDecisionService::class)->documentReview($document, $validated, $request->user());
 
         return response()->json([
             'success' => true,
@@ -161,6 +99,9 @@ public function destroy(
     ]);
 
     if ($document->file_path) {
+        Storage::disk('local')->delete(
+            $document->file_path
+        );
         Storage::disk('public')->delete(
             $document->file_path
         );

@@ -1,6 +1,7 @@
+import ErrorMessage from '../../components/ui/ErrorMessage';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import {
   UserRound,
   Mail,
@@ -644,7 +645,7 @@ const Register = () => {
             {/* Error */}
 
             {error && (
-              <div className="mb-6 flex items-start gap-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+              <ErrorMessage message={error}><div className="mb-6 flex items-start gap-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-4 py-3 text-sm text-red-700 dark:text-red-300">
                 <AlertCircle
                   size={19}
                   className="mt-0.5 shrink-0"
@@ -659,7 +660,7 @@ const Register = () => {
                     {error}
                   </p>
                 </div>
-              </div>
+              </div></ErrorMessage>
             )}
 
             {/* Success */}

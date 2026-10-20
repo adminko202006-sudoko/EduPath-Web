@@ -100,10 +100,10 @@ class NotificationController extends Controller
 
         $belongsToAssignedProgram = $notification
             ->user
-            ->applicant
-            ->admissionApplications()
-            ->whereIn('academic_program_id', $programIds)
-            ->exists();
+            ?->applicant
+            ?->admissionApplications()
+            ?->whereIn('academic_program_id', $programIds)
+            ?->exists() ?? false;
 
         if (!$belongsToAssignedProgram) {
             return response()->json([

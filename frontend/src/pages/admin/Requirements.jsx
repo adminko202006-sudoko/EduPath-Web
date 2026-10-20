@@ -1,10 +1,14 @@
-import { useEffect, useState } from 'react';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { useConfirmDialog, ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import { ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import { useConfirmDialog } from '../../components/ui/useConfirmDialog';
+import ModalPortal from '../../components/ui/ModalPortal';
 
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 
-import api from '../../services/api';
+import api, { getServerBaseUrl } from '../../services/api';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 import {
   Plus,
@@ -25,6 +29,7 @@ import {
   MoreHorizontal,
   GraduationCap,
   Check,
+  RefreshCw,
 } from 'lucide-react';
 
 const Requirements = ({ confirm }) => {
@@ -34,6 +39,7 @@ const Requirements = ({ confirm }) => {
   const [programs, setPrograms] = useState([]);
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [programsLoading, setProgramsLoading] = useState(false);
 
   const [error, setError] = useState('');
@@ -44,6 +50,7 @@ const Requirements = ({ confirm }) => {
 
   const [selectedFile, setSelectedFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -57,9 +64,10 @@ const Requirements = ({ confirm }) => {
      LOAD REQUIREMENTS
   ========================================================= */
 
-  const loadRequirements = async () => {
+  const loadRequirements = useCallback(async (silent = false) => {
     try {
-      setLoading(true);
+      if (silent) setRefreshing(true);
+      else setLoading(true);
       setError('');
 
       const response = await api.get('/admin/requirements', {
@@ -87,14 +95,15 @@ const Requirements = ({ confirm }) => {
       );
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, [token]);
 
   /* =========================================================
      LOAD PROGRAMS
   ========================================================= */
 
-  const loadPrograms = async () => {
+  const loadPrograms = useCallback(async () => {
     try {
       setProgramsLoading(true);
 
@@ -125,7 +134,12 @@ const Requirements = ({ confirm }) => {
     } finally {
       setProgramsLoading(false);
     }
-  };
+  }, [token]);
+  useAutoRefresh(() => {
+    if (submittingRef.current) return;
+    loadRequirements(true);
+    loadPrograms();
+  });
 
   /* =========================================================
      INITIAL LOAD
@@ -144,7 +158,7 @@ const Requirements = ({ confirm }) => {
     };
 
     loadPageData();
-  }, [token]);
+  }, [token, loadRequirements, loadPrograms]);
 
   /* =========================================================
      FORM CHANGE
@@ -251,6 +265,7 @@ const Requirements = ({ confirm }) => {
   ========================================================= */
 
   const openCreateForm = () => {
+    if (submittingRef.current) return;
     setShowForm(true);
     setEditingId(null);
 
@@ -289,12 +304,20 @@ const Requirements = ({ confirm }) => {
     setShowForm(false);
   };
 
+  const closeForm = () => {
+    if (submittingRef.current) return;
+    resetForm();
+    setError('');
+  };
+
   /* =========================================================
      SUBMIT
   ========================================================= */
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
 
     try {
       setError('');
@@ -395,7 +418,7 @@ const Requirements = ({ confirm }) => {
 
       resetForm();
 
-      await loadRequirements();
+      await loadRequirements(true);
     } catch (err) {
       console.error(
         'Failed to save admission requirement:',
@@ -418,6 +441,7 @@ const Requirements = ({ confirm }) => {
         );
       }
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
@@ -427,6 +451,7 @@ const Requirements = ({ confirm }) => {
   ========================================================= */
 
   const handleEdit = (requirement) => {
+    if (submittingRef.current) return;
     setEditingId(requirement.id);
 
     const assignedProgramIds = Array.isArray(
@@ -493,7 +518,7 @@ const Requirements = ({ confirm }) => {
           'Admission requirement deleted successfully.'
       );
 
-      await loadRequirements();
+      await loadRequirements(true);
     } catch (err) {
       console.error(
         'Failed to delete admission requirement:',
@@ -516,7 +541,7 @@ const Requirements = ({ confirm }) => {
       return null;
     }
 
-    return `http://127.0.0.1:8000/storage/${filePath}`;
+    return `${getServerBaseUrl()}/storage/${filePath}`;
   };
 
   /* =========================================================
@@ -650,7 +675,7 @@ const Requirements = ({ confirm }) => {
           HERO
       ====================================================== */}
 
-      <section className="ep-brand-gradient relative overflow-hidden rounded-2xl p-6 shadow-lg sm:p-8">
+      <section className="ep-page-banner ep-brand-gradient relative overflow-hidden rounded-2xl p-6 shadow-lg sm:p-8">
 
         <div className="absolute -right-20 -top-20 h-56 w-56 rounded-full bg-teal-300/10 blur-2xl" />
 
@@ -681,15 +706,27 @@ const Requirements = ({ confirm }) => {
 
           </div>
 
+          <div className="flex flex-wrap items-center gap-3 self-start lg:self-center lg:shrink-0">
+          <button
+            type="button"
+            onClick={() => { loadRequirements(true); loadPrograms(); }}
+            disabled={refreshing || submitting}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/20 disabled:opacity-60"
+          >
+            <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </button>
           <button
             type="button"
             onClick={openCreateForm}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-white/10 px-5 py-3 font-semibold text-white shadow-lg ring-1 ring-white/20 transition-colors duration-200  hover:bg-white/20"
+            disabled={submitting}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#F4B400] px-4 py-2.5 text-sm font-semibold text-[#0B2941] shadow-sm transition-colors hover:bg-[#DFA500] disabled:opacity-60"
           >
             <Plus className="h-5 w-5" />
 
-            <span>Add Requirement</span>
+            <span>Add Admission Requirement</span>
           </button>
+          </div>
 
         </div>
       </section>
@@ -698,8 +735,8 @@ const Requirements = ({ confirm }) => {
           ALERTS
       ====================================================== */}
 
-      {error && (
-        <div className="animate-fade-up flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700 shadow-sm dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+      {error && !showForm && (
+        <ErrorMessage message={error}><div className="animate-fade-up flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700 shadow-sm dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
 
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-100 dark:bg-red-950/50">
             <AlertCircle className="h-5 w-5" />
@@ -715,7 +752,7 @@ const Requirements = ({ confirm }) => {
             </p>
           </div>
 
-        </div>
+        </div></ErrorMessage>
       )}
 
       {success && (
@@ -787,7 +824,12 @@ const Requirements = ({ confirm }) => {
       ====================================================== */}
 
       {showForm && (
-        <section className="ep-card animate-scale-in overflow-hidden rounded-2xl">
+        <ModalPortal onEscape={closeForm}>
+        <div
+          className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/60 p-4"
+          onMouseDown={(event) => { if (event.target === event.currentTarget) closeForm(); }}
+        >
+        <section role="dialog" aria-modal="true" aria-labelledby="requirement-form-title" aria-busy={submitting} className="ep-card animate-scale-in w-full max-w-3xl max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain rounded-2xl">
 
           <div className="relative overflow-hidden bg-gradient-to-r from-[#123B5D] to-[#0F766E] px-6 py-5 text-white sm:px-8">
 
@@ -809,7 +851,7 @@ const Requirements = ({ confirm }) => {
 
                 <div className="min-w-0">
 
-                  <h2 className="text-lg font-bold sm:text-xl">
+                  <h2 id="requirement-form-title" className="text-lg font-bold sm:text-xl">
                     {editingId
                       ? 'Edit Admission Requirement'
                       : 'Add Admission Requirement'}
@@ -827,10 +869,11 @@ const Requirements = ({ confirm }) => {
 
               <button
                 type="button"
-                onClick={resetForm}
+                onClick={closeForm}
                 disabled={submitting}
                 className="shrink-0 rounded-xl p-2 text-white/80 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
                 title="Close"
+                aria-label="Close requirement form"
               >
                 <X className="h-6 w-6" />
               </button>
@@ -844,6 +887,8 @@ const Requirements = ({ confirm }) => {
             className="p-6 sm:p-8"
           >
 
+            {error && <ErrorMessage message={error}><p role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{error}</p></ErrorMessage>}
+            <fieldset disabled={submitting}>
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
 
               {/* REQUIREMENT NAME */}
@@ -1255,7 +1300,7 @@ const Requirements = ({ confirm }) => {
 
               <button
                 type="button"
-                onClick={resetForm}
+                onClick={closeForm}
                 disabled={submitting}
                 className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-5 py-3 font-semibold text-gray-700 transition-colors duration-200 hover:bg-gray-50 disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
               >
@@ -1268,9 +1313,12 @@ const Requirements = ({ confirm }) => {
 
             </div>
 
+            </fieldset>
           </form>
 
         </section>
+        </div>
+        </ModalPortal>
       )}
 
       {/* =====================================================

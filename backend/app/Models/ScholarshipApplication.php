@@ -18,12 +18,19 @@ class ScholarshipApplication extends Model
         'status',
         'remarks',
         'submitted_at',
+        'staff_recommendation',
+        'staff_recommendation_remarks',
+        'staff_recommended_by',
+        'staff_recommended_at',
     ];
 
     protected function casts(): array
     {
         return [
             'submitted_at' => 'datetime',
+            'staff_recommended_at' => 'datetime',
+            'award_decided_at' => 'datetime',
+            'award_revision' => 'integer',
         ];
     }
 

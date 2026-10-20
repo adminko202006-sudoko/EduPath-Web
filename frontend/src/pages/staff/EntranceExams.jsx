@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import { showErrorDialog } from '../../services/errorDialogs';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useCallback, useEffect, useState } from 'react';
 import {
   CalendarDays,
   Clock3,
@@ -19,33 +21,12 @@ import {
 } from 'lucide-react';
 
 import api from '../../services/api';
-import { useConfirmDialog, ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import { examDateInput, parseExamDate, isUpcomingScheduledExam as isUpcoming } from '../../services/examSchedule';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
+import { ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import { useConfirmDialog } from '../../components/ui/useConfirmDialog';
 import ModalPortal from '../../components/ui/ModalPortal';
-import { useAuth } from '../../context/AuthContext';
-
-const isUpcoming = (exam) => {
-  if (!exam.exam_date) {
-    return false;
-  }
-
-  const today = new Date();
-
-  today.setHours(
-    0,
-    0,
-    0,
-    0
-  );
-
-  const examDate = new Date(
-    `${exam.exam_date}T00:00:00`
-  );
-
-  return (
-    examDate >= today &&
-    Boolean(exam.is_active)
-  );
-};
+import { useAuth } from '../../context/useAuth';
 
 const getExamStatus = (exam) => {
   if (!exam.is_active) {
@@ -138,7 +119,7 @@ const StaffEntranceExams = ({ confirm }) => {
     is_active: true,
   });
 
-  const fetchExams = async (isRefresh = false) => {
+  const fetchExams = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) {
         setRefreshing(true);
@@ -169,13 +150,18 @@ const StaffEntranceExams = ({ confirm }) => {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [token]);
+  useAutoRefresh(() => {
+    fetchExams(true);
+  });
 
   useEffect(() => {
     if (token) {
-      fetchExams();
+      queueMicrotask(() => {
+        fetchExams();
+      });
     }
-  }, [token]);
+  }, [token, fetchExams]);
 
   const getApplicantName = (applicant) => {
     if (!applicant) {
@@ -261,9 +247,9 @@ const StaffEntranceExams = ({ confirm }) => {
       return '—';
     }
 
-    return new Date(
-      `${date}T00:00:00`
-    ).toLocaleDateString(undefined, {
+    const parsed = parseExamDate(date);
+    if (!parsed) return 'Date unavailable';
+    return parsed.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
@@ -311,7 +297,7 @@ const StaffEntranceExams = ({ confirm }) => {
     setForm({
       title: exam.title || '',
       description: exam.description || '',
-      exam_date: exam.exam_date || '',
+      exam_date: examDateInput(exam.exam_date),
       start_time: exam.start_time
         ? exam.start_time.substring(0, 5)
         : '',
@@ -408,7 +394,7 @@ const StaffEntranceExams = ({ confirm }) => {
         err
       );
 
-      alert(
+      showErrorDialog(
         err.response?.data?.message ||
           'Failed to update entrance examination.'
       );
@@ -465,7 +451,7 @@ const StaffEntranceExams = ({ confirm }) => {
         err
       );
 
-      alert(
+      showErrorDialog(
         err.response?.data?.message ||
           'Failed to cancel entrance examination.'
       );
@@ -505,7 +491,7 @@ const StaffEntranceExams = ({ confirm }) => {
           HERO HEADER
       ===================================================== */}
       <section
-        className="
+        className="ep-page-banner
           relative
           overflow-hidden
           rounded-2xl
@@ -730,7 +716,7 @@ const StaffEntranceExams = ({ confirm }) => {
           ERROR
       ===================================================== */}
       {error && (
-        <div
+        <ErrorMessage message={error}><div
           className="
             ep-card
             border-red-200
@@ -755,7 +741,7 @@ const StaffEntranceExams = ({ confirm }) => {
               {error}
             </p>
           </div>
-        </div>
+        </div></ErrorMessage>
       )}
 
       {/* =====================================================
@@ -1173,7 +1159,7 @@ const StaffEntranceExams = ({ confirm }) => {
                               items-center
                               justify-center
                               shrink-0
-                              
+
                               transition-transform
                             "
                           >

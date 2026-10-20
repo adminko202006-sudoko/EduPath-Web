@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useCallback, useEffect, useState } from 'react';
 
-import { useConfirmDialog, ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import { ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import { useConfirmDialog } from '../../components/ui/useConfirmDialog';
 
 import {
   Award,
@@ -29,13 +31,16 @@ import {
   Layers3,
 } from 'lucide-react';
 
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import api from '../../services/api';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 const emptyForm = {
   name: '',
   provider: '',
   program_type: '',
+  category: 'other',
+  admission_approval_required: true,
   description: '',
   objectives: '',
   goals: '',
@@ -47,6 +52,8 @@ const emptyForm = {
   covered_expenses: '',
   application_start: '',
   application_end: '',
+  application_start_at: '',
+  application_end_at: '',
   available_slots: '',
   renewal_requirements: '',
   official_reference: '',
@@ -68,7 +75,7 @@ const Scholarships = ({ confirm }) => {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
 
-  const loadScholarships = async (showRefresh = false) => {
+  const loadScholarships = useCallback(async (showRefresh = false) => {
     try {
       setError('');
 
@@ -100,13 +107,18 @@ const Scholarships = ({ confirm }) => {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [token]);
+  useAutoRefresh(() => {
+    loadScholarships(true);
+  });
 
   useEffect(() => {
     if (token) {
-      loadScholarships();
+      queueMicrotask(() => {
+        loadScholarships();
+      });
     }
-  }, [token]);
+  }, [token, loadScholarships]);
 
   const updateField = (field, value) => {
     setForm((previous) => ({
@@ -137,6 +149,8 @@ const Scholarships = ({ confirm }) => {
       name: scholarship.name || '',
       provider: scholarship.provider || '',
       program_type: scholarship.program_type || '',
+      category: scholarship.category || 'other',
+      admission_approval_required: scholarship.admission_approval_required !== false,
       description: scholarship.description || '',
       objectives: scholarship.objectives || '',
       goals: scholarship.goals || '',
@@ -152,12 +166,10 @@ const Scholarships = ({ confirm }) => {
       benefits: scholarship.benefits || '',
       covered_expenses:
         scholarship.covered_expenses || '',
-      application_start: formatDateForInput(
-        scholarship.application_start
-      ),
-      application_end: formatDateForInput(
-        scholarship.application_end
-      ),
+      application_start: '',
+      application_end: '',
+      application_start_at: formatDateTimeForInput(scholarship.application_start_at, scholarship.application_start, false),
+      application_end_at: formatDateTimeForInput(scholarship.application_end_at, scholarship.application_end, true),
       available_slots:
         scholarship.available_slots !== null &&
         scholarship.available_slots !== undefined
@@ -197,6 +209,8 @@ const Scholarships = ({ confirm }) => {
         name: form.name.trim(),
         provider: form.provider.trim() || null,
         program_type: form.program_type.trim() || null,
+        category: form.category,
+        admission_approval_required: Boolean(form.admission_approval_required),
         description: form.description.trim() || null,
         objectives: form.objectives.trim() || null,
         goals: form.goals.trim() || null,
@@ -211,14 +225,11 @@ const Scholarships = ({ confirm }) => {
         benefits: form.benefits.trim() || null,
         covered_expenses:
           form.covered_expenses.trim() || null,
-        application_start:
-          form.application_start || null,
-        application_end:
-          form.application_end || null,
-        available_slots:
-          form.available_slots !== ''
-            ? Number(form.available_slots)
-            : null,
+        application_start: null,
+        application_end: null,
+        application_start_at: form.application_start_at ? new Date(form.application_start_at).toISOString() : null,
+        application_end_at: form.application_end_at ? new Date(form.application_end_at).toISOString() : null,
+        available_slots: null,
         renewal_requirements:
           form.renewal_requirements.trim() || null,
         official_reference:
@@ -386,40 +397,21 @@ const Scholarships = ({ confirm }) => {
       return date;
     }
 
-    return parsedDate.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
+    const dateLabel = parsedDate.toLocaleDateString('en-US', {
+      year: 'numeric', month: 'long', day: 'numeric',
     });
+    return /[T ]\d{2}:\d{2}/.test(String(date))
+      ? `${dateLabel}, ${parsedDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
+      : dateLabel;
   };
 
-  const formatDateForInput = (date) => {
-    if (!date) {
-      return '';
-    }
-
-    if (
-      typeof date === 'string' &&
-      /^\d{4}-\d{2}-\d{2}/.test(date)
-    ) {
-      return date.substring(0, 10);
-    }
-
-    const parsedDate = new Date(date);
-
-    if (Number.isNaN(parsedDate.getTime())) {
-      return '';
-    }
-
-    const year = parsedDate.getFullYear();
-    const month = String(
-      parsedDate.getMonth() + 1
-    ).padStart(2, '0');
-    const day = String(
-      parsedDate.getDate()
-    ).padStart(2, '0');
-
-    return `${year}-${month}-${day}`;
+  const formatDateTimeForInput = (value, legacyDate, endOfDay = false) => {
+    const source = value || (legacyDate ? `${String(legacyDate).slice(0, 10)}T${endOfDay ? '23:59' : '00:00'}` : '');
+    if (!source) return '';
+    const parsed = new Date(source);
+    if (Number.isNaN(parsed.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}T${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`;
   };
 
   const isDeadlinePassed = (deadline) => {
@@ -575,7 +567,7 @@ const Scholarships = ({ confirm }) => {
     <div className="space-y-6 pb-8 page-transition">
 
       {/* Hero */}
-      <div className="relative overflow-hidden rounded-2xl ep-brand-gradient shadow-lg animate-fade-up">
+      <div className="ep-page-banner relative overflow-hidden rounded-2xl ep-brand-gradient shadow-lg animate-fade-up">
         <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full bg-white/5" />
         <div className="absolute -bottom-20 -left-12 w-52 h-52 rounded-full bg-white/5" />
 
@@ -678,7 +670,7 @@ const Scholarships = ({ confirm }) => {
 
       {/* Alerts */}
       {error && (
-        <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-2xl p-4 animate-fade-up">
+        <ErrorMessage message={error}><div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-2xl p-4 animate-fade-up">
           <div className="flex items-start gap-3">
             <AlertCircle
               size={20}
@@ -695,7 +687,7 @@ const Scholarships = ({ confirm }) => {
               </p>
             </div>
           </div>
-        </div>
+        </div></ErrorMessage>
       )}
 
       {success && (
@@ -836,6 +828,34 @@ const Scholarships = ({ confirm }) => {
                 placeholder="e.g. Government Financial Assistance"
               />
 
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">Scholarship Category <span className="text-red-500">*</span></label>
+                <select
+                  value={form.category}
+                  required
+                  onChange={(event) => {
+                    const category = event.target.value;
+                    setForm((previous) => ({
+                      ...previous,
+                      category,
+                      available_slots: category === 'other' ? '' : previous.available_slots,
+                    }));
+                  }}
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-800 focus:bg-white dark:focus:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-[#123B5D]/20 focus:border-[#123B5D] dark:focus:border-blue-500 transition-colors"
+                >
+                  <option value="unifast">UniFAST — face-to-face examination</option>
+                  <option value="tes_tdp">TES / TDP — official eligibility and selection rules</option>
+                  <option value="other">Other Scholarships — online examination</option>
+                </select>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                  {form.category === 'unifast'
+                    ? 'Uses the face-to-face examination and venue workflow. The online scholarship exam will not be required.'
+                    : form.category === 'tes_tdp'
+                      ? 'Eligibility and selection must follow applicable CHED and official program rules.'
+                      : 'Requires 100 randomly selected questions, the time per question configured on the Online Scholarship Examination page, and a passing score of 50/100. Awards are not limited by a fixed slot count.'}
+                </p>
+              </div>
+
               <FormTextarea
                 label="Description"
                 value={form.description}
@@ -912,6 +932,19 @@ const Scholarships = ({ confirm }) => {
                 placeholder="List the documents and requirements applicants must provide."
                 rows={5}
               />
+
+              <label className="flex items-start gap-3 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+                <input
+                  type="checkbox"
+                  checked={Boolean(form.admission_approval_required)}
+                  onChange={(event) => updateField('admission_approval_required', event.target.checked)}
+                  className="mt-1 h-4 w-4 accent-[#123B5D]"
+                />
+                <span>
+                  <span className="block text-sm font-semibold text-gray-800 dark:text-gray-100">Require approved admission before scholarship application</span>
+                  <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">Only uncheck this when official scholarship rules provide an exception. An official reference is required.</span>
+                </span>
+              </label>
             </FormSection>
 
             {/* Benefits */}
@@ -934,21 +967,10 @@ const Scholarships = ({ confirm }) => {
                   icon={PhilippinePeso}
                 />
 
-                <FormInput
-                  label="Available Slots"
-                  value={form.available_slots}
-                  onChange={(value) =>
-                    updateField(
-                      'available_slots',
-                      value
-                    )
-                  }
-                  placeholder="e.g. 50"
-                  type="number"
-                  min="0"
-                  step="1"
-                  icon={Users}
-                />
+                <div className="rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/70 dark:bg-blue-950/30 px-4 py-3">
+                  <p className="text-sm font-semibold text-blue-900 dark:text-blue-200">No fixed slot limit</p>
+                  <p className="text-xs text-blue-800 dark:text-blue-300 mt-1">All applicants who meet the scholarship’s official eligibility and award criteria can qualify. Available slots are not used to reject applications.</p>
+                </div>
               </div>
 
               <FormTextarea
@@ -979,32 +1001,22 @@ const Scholarships = ({ confirm }) => {
             <FormSection
               icon={CalendarDays}
               title="Application Details"
-              description="Set the application period and renewal conditions."
+              description="Set the exact opening and closing date/time and renewal conditions."
             >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <FormInput
                   label="Application Start"
-                  value={form.application_start}
-                  onChange={(value) =>
-                    updateField(
-                      'application_start',
-                      value
-                    )
-                  }
-                  type="date"
+                  value={form.application_start_at}
+                  onChange={(value) => updateField('application_start_at', value)}
+                  type="datetime-local"
                   icon={CalendarDays}
                 />
 
                 <FormInput
                   label="Application End"
-                  value={form.application_end}
-                  onChange={(value) =>
-                    updateField(
-                      'application_end',
-                      value
-                    )
-                  }
-                  type="date"
+                  value={form.application_end_at}
+                  onChange={(value) => updateField('application_end_at', value)}
+                  type="datetime-local"
                   icon={CalendarDays}
                 />
               </div>
@@ -1328,22 +1340,15 @@ const Scholarships = ({ confirm }) => {
 
                         <InfoBox
                           icon={Users}
-                          label="Available Slots"
-                          value={
-                            scholarship.available_slots !==
-                              null &&
-                            scholarship.available_slots !==
-                              undefined
-                              ? scholarship.available_slots
-                              : 'Not specified'
-                          }
+                          label="Award Policy"
+                          value="No fixed slot limit"
                         />
 
                         <InfoBox
                           icon={CalendarDays}
                           label="Application Start"
                           value={formatDate(
-                            scholarship.application_start
+                            scholarship.application_start_at || scholarship.application_start
                           )}
                         />
 
@@ -1351,7 +1356,7 @@ const Scholarships = ({ confirm }) => {
                           icon={CalendarDays}
                           label="Application End"
                           value={formatDate(
-                            scholarship.application_end
+                            scholarship.application_end_at || scholarship.application_end
                           )}
                         />
                       </div>

@@ -4,10 +4,13 @@ namespace App\Http\Controllers\Api\Staff;
 
 use App\Http\Controllers\Controller;
 use App\Models\EntranceExam;
+use App\Http\Controllers\Concerns\ValidatesEntranceExamTimes;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class ExamController extends Controller
 {
+    use ValidatesEntranceExamTimes;
     /**
      * Get entrance exams involving applicants
      * from the staff's assigned programs.
@@ -19,10 +22,7 @@ class ExamController extends Controller
         $programIds = $staff->academicPrograms()
             ->pluck('academic_programs.id');
 
-        $exams = EntranceExam::with([
-            'examAssignments.applicant.user',
-            'examAssignments.applicant.admissionApplications.academicProgram',
-        ])
+        $exams = EntranceExam::with($this->scopedExamRelations($programIds))
             ->whereHas(
                 'examAssignments.applicant.admissionApplications',
                 function ($query) use ($programIds) {
@@ -34,6 +34,8 @@ class ExamController extends Controller
             )
             ->latest('exam_date')
             ->get();
+
+        $exams->each(fn ($exam) => $this->hideUnreleasedResults($exam));
 
         return response()->json([
             'success' => true,
@@ -49,15 +51,13 @@ class ExamController extends Controller
         Request $request,
         EntranceExam $exam
     ) {
-        $this->ensureAssignedExam(
+        $programIds = $this->ensureAssignedExam(
             $request,
             $exam
         );
 
-        $exam->load([
-            'examAssignments.applicant.user',
-            'examAssignments.applicant.admissionApplications.academicProgram',
-        ]);
+        $exam->load($this->scopedExamRelations($programIds));
+        $this->hideUnreleasedResults($exam);
 
         return response()->json([
             'success' => true,
@@ -73,32 +73,39 @@ class ExamController extends Controller
         Request $request,
         EntranceExam $exam
     ) {
-        $this->ensureAssignedExam(
-            $request,
-            $exam
-        );
+        return DB::transaction(function () use ($request, $exam) {
+            $exam = EntranceExam::whereKey($exam->id)->lockForUpdate()->firstOrFail();
+            $programIds = $this->ensureAssignedExam(
+                $request,
+                $exam
+            );
 
-        $validated = $request->validate([
-            'title' => 'sometimes|required|string|max:255',
-            'description' => 'nullable|string',
-            'exam_date' => 'sometimes|required|date',
-            'start_time' => 'sometimes|required|date_format:H:i',
-            'end_time' => 'sometimes|required|date_format:H:i|after:start_time',
-            'venue' => 'sometimes|required|string|max:255',
-            'capacity' => 'nullable|integer|min:1',
-            'is_active' => 'sometimes|boolean',
-        ]);
+            $validated = $request->validate([
+                'title' => 'sometimes|required|string|max:255',
+                'description' => 'nullable|string',
+                'exam_date' => 'sometimes|required|date',
+                'start_time' => 'sometimes|required|date_format:H:i',
+                'end_time' => 'sometimes|required|date_format:H:i',
+                'venue' => 'sometimes|required|string|max:255',
+                'capacity' => 'nullable|integer|min:1',
+                'is_active' => 'sometimes|boolean',
+            ]);
 
-        $exam->update($validated);
+            $this->validateEntranceExamTimes($validated, $exam);
+            $exam->update($validated);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Entrance exam updated successfully.',
-            'data' => $exam->load([
-                'examAssignments.applicant.user',
-                'examAssignments.applicant.admissionApplications.academicProgram',
-            ]),
-        ]);
+            $exam->load($this->scopedExamRelations($programIds));
+            $this->hideUnreleasedResults($exam);
+
+            // Do not reload the assignments here: reloading would discard the
+            // per-assignment hidden score/remarks attributes applied above and
+            // could expose unreleased results in this response.
+            return response()->json([
+                'success' => true,
+                'message' => 'Entrance exam updated successfully.',
+                'data' => $exam,
+            ]);
+        });
     }
 
     /**
@@ -108,7 +115,7 @@ class ExamController extends Controller
         Request $request,
         EntranceExam $exam
     ) {
-        $this->ensureAssignedExam(
+        $programIds = $this->ensureAssignedExam(
             $request,
             $exam
         );
@@ -121,6 +128,17 @@ class ExamController extends Controller
             'success' => true,
             'message' => 'Entrance exam cancelled successfully.',
         ]);
+    }
+
+
+    /** Prevent staff responses from leaking results before official release. */
+    private function hideUnreleasedResults(EntranceExam $exam): void
+    {
+        if (!$exam->results_released_at) {
+            $exam->examAssignments->each(function ($assignment) {
+                $assignment->makeHidden(['score', 'remarks']);
+            });
+        }
     }
 
     /**
@@ -180,5 +198,16 @@ class ExamController extends Controller
                     'You are not authorized to access this exam.',
             ], 403));
         }
+
+        return $programIds;
+    }
+
+    /** Scope both assignment rows and nested admissions to authorized programs. */
+    private function scopedExamRelations($programIds): array
+    {
+        return ['examAssignments' => function ($assignments) use ($programIds) {
+            $assignments->whereHas('applicant.admissionApplications', fn ($q) => $q->whereIn('academic_program_id', $programIds))
+                ->with(['applicant.user', 'applicant.admissionApplications' => fn ($q) => $q->whereIn('academic_program_id', $programIds)->with('academicProgram')]);
+        }];
     }
 }

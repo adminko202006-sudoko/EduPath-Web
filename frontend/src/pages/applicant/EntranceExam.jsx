@@ -1,3 +1,4 @@
+import ErrorMessage from '../../components/ui/ErrorMessage';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ClipboardCheck,
@@ -11,10 +12,13 @@ import {
   RefreshCw,
   Award,
   Info,
+  ShieldCheck,
 } from 'lucide-react';
 
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import api from '../../services/api';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
+import ExamRosterPanel from '../../components/ExamRosterPanel';
 
 const EntranceExam = () => {
   const { token } = useAuth();
@@ -73,13 +77,18 @@ const EntranceExam = () => {
       setRefreshing(false);
     }
   }, [token]);
+  useAutoRefresh(() => {
+    loadExams(true);
+  });
 
   // ==========================================
   // INITIAL LOAD
   // ==========================================
 
   useEffect(() => {
-    loadExams();
+    queueMicrotask(() => {
+      loadExams();
+    });
   }, [loadExams]);
 
   // ==========================================
@@ -299,7 +308,7 @@ const EntranceExam = () => {
   return (
     <div className="mx-auto max-w-7xl space-y-7">
       {/* PAGE HEADER */}
-      <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="ep-page-banner rounded-2xl p-6 shadow-lg sm:p-8 flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#123B5D] shadow-sm">
             <ClipboardCheck size={23} className="text-white" />
@@ -332,7 +341,7 @@ const EntranceExam = () => {
 
       {/* ERROR MESSAGE */}
       {error && (
-        <div
+        <ErrorMessage message={error}><div
           role="alert"
           className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-red-700 dark:border-red-400/20 dark:bg-red-500/10 dark:text-red-300"
         >
@@ -354,7 +363,7 @@ const EntranceExam = () => {
               Try again
             </button>
           </div>
-        </div>
+        </div></ErrorMessage>
       )}
 
       {/* SUMMARY */}
@@ -540,6 +549,7 @@ const EntranceExam = () => {
                   </div>
 
                   {/* IMPORTANT INFORMATION */}
+                  <ExamRosterPanel key={assignment.id} exam={exam} assignmentId={assignment.id} />
                   <div className="mt-6 rounded-2xl border border-[#123B5D]/10 bg-[#123B5D]/5 p-5 dark:border-blue-400/15 dark:bg-blue-400/5">
                     <div className="flex items-start gap-3">
                       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#123B5D] dark:bg-blue-500">
@@ -586,9 +596,10 @@ const EntranceExam = () => {
                   </div>
 
                   {/* EXAM RESULT */}
-                  {(assignment.score !== null &&
+                  {assignment.entrance_exam?.results_released_at &&
+                  ((assignment.score !== null &&
                     assignment.score !== undefined) ||
-                  assignment.remarks ? (
+                    assignment.remarks) ? (
                     <div className="mt-6 rounded-2xl border border-green-100 bg-green-50/60 p-5 dark:border-green-400/15 dark:bg-green-500/5">
                       <div className="flex items-start gap-3">
                         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-green-600">
@@ -609,11 +620,12 @@ const EntranceExam = () => {
                                   </span>
 
                                   <span className="text-lg font-bold text-green-700 dark:text-green-300">
-                                    {assignment.score}
+                                    {assignment.score} / {exam.maximum_score ?? 100}
                                   </span>
                                 </div>
                               )}
 
+                            {typeof assignment.passed === 'boolean' && <p className="text-sm font-semibold">{assignment.passed ? 'Passed' : 'No passing result'} · Passing score: {exam.passing_score ?? 40}/100</p>}
                             {assignment.remarks && (
                               <div className="rounded-xl border border-green-100 bg-white px-4 py-3 dark:border-green-400/10 dark:bg-[#10263A]">
                                 <p className="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">
@@ -627,6 +639,15 @@ const EntranceExam = () => {
                             )}
                           </div>
                         </div>
+                      </div>
+                    </div>
+                  ) : !assignment.entrance_exam?.results_released_at &&
+                  (assignment.status?.toLowerCase() === 'completed' || assignment.status?.toLowerCase() === 'absent') ? (
+                    <div className="mt-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-400/20 dark:bg-amber-500/5">
+                      <ShieldCheck size={19} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" />
+                      <div>
+                        <h3 className="font-semibold text-amber-900 dark:text-amber-200">Results Pending Official Release</h3>
+                        <p className="mt-1 text-sm leading-relaxed text-amber-800 dark:text-amber-100/80">Your examination status has been recorded. Your score and remarks will appear here after the college officially releases the results.</p>
                       </div>
                     </div>
                   ) : null}

@@ -1,7 +1,9 @@
+import ErrorMessage from '../../components/ui/ErrorMessage';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import api from '../../services/api';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 import {
   Users,
@@ -453,9 +455,14 @@ const Dashboard = () => {
     },
     [token],
   );
+  useAutoRefresh(() => {
+    loadDashboard(true);
+  });
 
   useEffect(() => {
-    loadDashboard();
+    queueMicrotask(() => {
+      loadDashboard();
+    });
   }, [loadDashboard]);
 
   if (loading) {
@@ -464,7 +471,7 @@ const Dashboard = () => {
 
   if (error && !dashboard) {
     return (
-      <div className="page-transition flex min-h-[480px] items-center justify-center">
+      <ErrorMessage message={error}><div className="page-transition flex min-h-[480px] items-center justify-center">
         <div className="ep-card w-full max-w-lg p-8 text-center animate-scale-in">
           <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-red-500/10 text-red-500">
             <AlertCircle size={30} />
@@ -487,14 +494,14 @@ const Dashboard = () => {
             Try Again
           </button>
         </div>
-      </div>
+      </div></ErrorMessage>
     );
   }
 
   return (
     <div className="page-transition space-y-8">
       {/* HERO */}
-      <section className="ep-brand-gradient relative overflow-hidden rounded-2xl p-6 shadow-lg shadow-[#123B5D]/10 sm:p-8 lg:p-9 animate-fade-up">
+      <section className="ep-page-banner ep-brand-gradient relative overflow-hidden rounded-2xl p-6 shadow-lg shadow-[#123B5D]/10 sm:p-8 lg:p-9 animate-fade-up">
         <div className="pointer-events-none absolute -right-12 -top-16 h-52 w-52 rounded-full border border-white/10 bg-white/[0.04]" />
         <div className="pointer-events-none absolute -bottom-24 right-24 h-56 w-56 rounded-full bg-[#F4B400]/10 blur-sm" />
         <div className="pointer-events-none absolute bottom-0 left-1/3 h-40 w-40 rounded-full bg-teal-300/[0.06] blur-2xl" />
@@ -545,7 +552,7 @@ const Dashboard = () => {
       </section>
 
       {error && dashboard && (
-        <div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-800 dark:text-amber-300">
+        <ErrorMessage message={error}><div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-800 dark:text-amber-300">
           <AlertCircle size={18} className="mt-0.5 shrink-0" />
           <div className="flex-1">
             <p className="font-bold">Refresh unsuccessful</p>
@@ -558,7 +565,7 @@ const Dashboard = () => {
           >
             Retry
           </button>
-        </div>
+        </div></ErrorMessage>
       )}
 
       {/* SYSTEM OVERVIEW */}

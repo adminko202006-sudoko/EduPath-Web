@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { showErrorDialog } from '../../services/errorDialogs';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Search,
   Eye,
@@ -17,7 +19,9 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import api from '../../services/api';
-import { useAuth } from '../../context/AuthContext';
+import { openPrivateDocument } from '../../services/documentFile';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
+import { useAuth } from '../../context/useAuth';
 import ModalPortal from '../../components/ui/ModalPortal';
 
 const StaffDocuments = () => {
@@ -34,7 +38,7 @@ const StaffDocuments = () => {
   const [remarks, setRemarks] = useState('');
   const [updating, setUpdating] = useState(false);
 
-  const fetchDocuments = async (isRefresh = false) => {
+  const fetchDocuments = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) {
         setRefreshing(true);
@@ -62,13 +66,18 @@ const StaffDocuments = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [token]);
+  useAutoRefresh(() => {
+    fetchDocuments(true);
+  });
 
   useEffect(() => {
     if (token) {
-      fetchDocuments();
+      queueMicrotask(() => {
+        fetchDocuments();
+      });
     }
-  }, [token]);
+  }, [token, fetchDocuments]);
 
   const getApplicantName = (document) => {
     const applicant =
@@ -266,7 +275,7 @@ const StaffDocuments = () => {
         err
       );
 
-      alert(
+      showErrorDialog(
         err.response?.data?.message ||
           'Failed to update document status.'
       );
@@ -280,18 +289,28 @@ const StaffDocuments = () => {
     setStatusFilter('all');
   };
 
-  const getFileUrl = (document) => {
+  const handleOpenFile = async (document) => {
     if (!document?.file_path) {
-      return null;
+      return;
     }
 
-    return `http://127.0.0.1:8000/storage/${document.file_path}`;
+    try {
+      // Streamed through the staff endpoint so program assignments are
+      // enforced server-side (the old /storage/ link had no authorization).
+      await openPrivateDocument(
+        `/staff/documents/${document.id}/file`
+      );
+    } catch {
+      setError(
+        'Unable to open the document right now. Please try again.'
+      );
+    }
   };
 
   return (
     <div className="space-y-7 page-transition">
       {/* HERO */}
-      <section className="relative overflow-hidden rounded-2xl ep-brand-gradient shadow-lg p-6 sm:p-8 animate-fade-up">
+      <section className="ep-page-banner relative overflow-hidden rounded-2xl ep-brand-gradient shadow-lg p-6 sm:p-8 animate-fade-up">
         <div className="absolute -right-16 -top-20 w-52 h-52 rounded-full bg-white/5 animate-float" />
         <div className="absolute right-24 -bottom-24 w-44 h-44 rounded-full bg-[#F4B400]/10" />
 
@@ -470,7 +489,7 @@ const StaffDocuments = () => {
 
       {/* ERROR */}
       {error && (
-        <div className="ep-card border-red-200 dark:border-red-900/50 p-4 flex items-start gap-3 animate-scale-in">
+        <ErrorMessage message={error}><div className="ep-card border-red-200 dark:border-red-900/50 p-4 flex items-start gap-3 animate-scale-in">
           <div className="w-9 h-9 rounded-lg bg-red-50 dark:bg-red-500/10 flex items-center justify-center shrink-0">
             <AlertCircle className="w-5 h-5 text-red-500" />
           </div>
@@ -484,7 +503,7 @@ const StaffDocuments = () => {
               {error}
             </p>
           </div>
-        </div>
+        </div></ErrorMessage>
       )}
 
       {/* FILTERS */}
@@ -1059,16 +1078,17 @@ const StaffDocuments = () => {
                   </p>
                 </div>
 
-                {getFileUrl(selectedDocument) && (
-                  <a
-                    href={getFileUrl(selectedDocument)}
-                    target="_blank"
-                    rel="noreferrer"
+                {selectedDocument?.file_path && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleOpenFile(selectedDocument)
+                    }
                     className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0F766E]/10 dark:bg-teal-400/10 text-[#0F766E] dark:text-teal-300 text-sm font-bold hover:bg-[#0F766E]/20 transition-colors"
                   >
                     <ExternalLink size={16} />
                     Open Submitted File
-                  </a>
+                  </button>
                 )}
               </div>
 

@@ -1,3 +1,4 @@
+import ErrorMessage from '../../components/ui/ErrorMessage';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
@@ -85,6 +86,9 @@ const VerifyResetOtp = () => {
         }
       );
 
+      const resetToken = response.data?.reset_token;
+      if (!resetToken) throw new Error('The reset session could not be created. Please request a new code.');
+
       setSuccess(
         response.data?.message ||
           'Verification code verified successfully.'
@@ -100,6 +104,7 @@ const VerifyResetOtp = () => {
           navigate('/reset-password', {
             state: {
               email,
+              resetToken,
             },
           });
         }, 400);
@@ -577,7 +582,7 @@ const VerifyResetOtp = () => {
                   ERROR
               ================================================== */}
               {error && (
-                <div className="mb-5 flex items-start gap-3 rounded-2xl bg-red-50 border border-red-200 px-4 py-3.5 text-red-700 text-sm shadow-sm">
+                <ErrorMessage message={error}><div className="mb-5 flex items-start gap-3 rounded-2xl bg-red-50 border border-red-200 px-4 py-3.5 text-red-700 text-sm shadow-sm">
 
                   <AlertCircle
                     size={19}
@@ -588,7 +593,7 @@ const VerifyResetOtp = () => {
                     {error}
                   </span>
 
-                </div>
+                </div></ErrorMessage>
               )}
 
 

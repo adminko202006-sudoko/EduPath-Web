@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useCallback, useEffect, useState } from 'react';
 import {
   FileCheck,
   Users,
@@ -15,7 +16,8 @@ import {
 } from 'lucide-react';
 
 import api from '../../services/api';
-import { useAuth } from '../../context/AuthContext';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
+import { useAuth } from '../../context/useAuth';
 
 const StaffReports = () => {
   const { token } = useAuth();
@@ -25,7 +27,7 @@ const StaffReports = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  const fetchReports = async (isRefresh = false) => {
+  const fetchReports = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) {
         setRefreshing(true);
@@ -61,13 +63,18 @@ const StaffReports = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [token]);
+  useAutoRefresh(() => {
+    fetchReports(true);
+  });
 
   useEffect(() => {
     if (token) {
-      fetchReports();
+      queueMicrotask(() => {
+        fetchReports();
+      });
     }
-  }, [token]);
+  }, [token, fetchReports]);
 
   const summary = report?.summary || {};
 
@@ -218,7 +225,7 @@ const StaffReports = () => {
     return (
       <div className="space-y-7 page-transition">
         <section
-          className="
+          className="ep-page-banner
             relative
             overflow-hidden
             rounded-2xl
@@ -291,7 +298,7 @@ const StaffReports = () => {
           HERO
       ===================================================== */}
       <section
-        className="
+        className="ep-page-banner
           relative
           overflow-hidden
           rounded-2xl
@@ -412,7 +419,7 @@ const StaffReports = () => {
           ERROR
       ===================================================== */}
       {error && (
-        <div
+        <ErrorMessage message={error}><div
           className="
             ep-card
             border-red-200
@@ -440,7 +447,7 @@ const StaffReports = () => {
               {error}
             </p>
           </div>
-        </div>
+        </div></ErrorMessage>
       )}
 
       {/* =====================================================
@@ -513,12 +520,12 @@ const StaffReports = () => {
 
             <div>
               <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
-                Scholarship Summary
+                Scholarship Review Summary
               </h2>
 
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                Scholarship applications within
-                your assigned programs.
+                Scholarship application reviews within
+                your assigned programs. Review approval does not indicate a final scholarship award.
               </p>
             </div>
           </div>
@@ -541,7 +548,7 @@ const StaffReports = () => {
 
             <div className="rounded-xl bg-emerald-50 dark:bg-emerald-400/5 border border-emerald-100 dark:border-emerald-400/10 p-4">
               <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-300">
-                Approved
+                Review approved
               </p>
 
               <p className="text-2xl font-extrabold text-emerald-700 dark:text-emerald-300 mt-2">
@@ -550,7 +557,7 @@ const StaffReports = () => {
               </p>
 
               <p className="text-[11px] text-emerald-600/70 dark:text-emerald-300/70 mt-1">
-                Accepted
+                Admin review decision
               </p>
             </div>
 
@@ -1097,4 +1104,3 @@ const StaffReports = () => {
 };
 
 export default StaffReports;
-

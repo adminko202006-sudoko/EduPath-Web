@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useAuth } from '../../context/AuthContext';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useAuth } from '../../context/useAuth';
 import api from '../../services/api';
+import { openPrivateDocument } from '../../services/documentFile';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 import {
   FolderOpen,
@@ -51,7 +54,7 @@ const Documents = () => {
   // LOAD ADMISSION APPLICATION
   // ==========================================
 
-  const loadAdmissionApplication = async () => {
+  const loadAdmissionApplication = useCallback(async () => {
     try {
       const response = await api.get('/applicant/admissions', {
         headers: {
@@ -91,13 +94,13 @@ const Documents = () => {
 
       return null;
     }
-  };
+  }, [token]);
 
   // ==========================================
   // LOAD REQUIREMENTS FOR PROGRAM
   // ==========================================
 
-  const loadRequirements = async (application) => {
+  const loadRequirements = useCallback(async (application) => {
     if (!application) {
       setRequirements([]);
       return;
@@ -145,13 +148,13 @@ const Documents = () => {
     } finally {
       setRequirementsLoading(false);
     }
-  };
+  }, [token]);
 
   // ==========================================
   // LOAD DOCUMENTS
   // ==========================================
 
-  const loadDocuments = async () => {
+  const loadDocuments = useCallback(async () => {
     try {
       const response = await api.get(
         '/applicant/documents',
@@ -184,7 +187,15 @@ const Documents = () => {
 
       return false;
     }
-  };
+  }, [token]);
+  useAutoRefresh(async () => {
+    const application = await loadAdmissionApplication();
+
+    await Promise.all([
+      loadDocuments(),
+      loadRequirements(application),
+    ]);
+  });
 
   // ==========================================
   // INITIAL LOAD
@@ -211,7 +222,7 @@ const Documents = () => {
     };
 
     loadPage();
-  }, [token]);
+  }, [token, loadAdmissionApplication, loadDocuments, loadRequirements]);
 
   // ==========================================
   // REFRESH
@@ -572,8 +583,8 @@ const Documents = () => {
   // VIEW DOCUMENT
   // ==========================================
 
-  const handleView = (filePath) => {
-    if (!filePath) {
+  const handleView = async (doc) => {
+    if (!doc?.file_path) {
       setError(
         'Document file is not available.'
       );
@@ -581,14 +592,18 @@ const Documents = () => {
       return;
     }
 
-    const fileUrl =
-      `http://127.0.0.1:8000/storage/${filePath}`;
-
-    window.open(
-      fileUrl,
-      '_blank',
-      'noopener,noreferrer'
-    );
+    try {
+      // Private files are streamed through the authenticated endpoint so
+      // ownership is enforced server-side instead of relying on unguessable
+      // public /storage/ URLs.
+      await openPrivateDocument(
+        `/applicant/documents/${doc.id}/file`
+      );
+    } catch {
+      setError(
+        'Unable to open the document right now. Please try again.'
+      );
+    }
   };
 
   // ==========================================
@@ -725,7 +740,7 @@ const Documents = () => {
   // FIND DOCUMENT FOR REQUIREMENT
   // ==========================================
 
-  const findDocumentForRequirement = (
+  const findDocumentForRequirement = useCallback((
     requirement
   ) => {
     if (!requirement) {
@@ -747,7 +762,7 @@ const Documents = () => {
         uploadedName === requirementName
       );
     });
-  };
+  }, [documents]);
 
   // ==========================================
   // REQUIREMENT CHECKLIST
@@ -767,7 +782,7 @@ const Documents = () => {
         };
       }
     );
-  }, [requirements, documents]);
+  }, [requirements, findDocumentForRequirement]);
 
   // ==========================================
   // REQUIREMENT STATISTICS
@@ -889,7 +904,7 @@ const Documents = () => {
       {/* HERO */}
 
       <div className="ep-card overflow-hidden rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm ep-hover-lift">
-        <div className="ep-brand-gradient p-7">
+        <div className="ep-page-banner ep-brand-gradient p-7">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
 
             <div className="flex items-center gap-4">
@@ -903,7 +918,7 @@ const Documents = () => {
                   Applicant Portal
                 </p>
 
-                <h1 className="text-3xl font-bold text-white mt-1">
+                <h1 data-tutorial-target="applicant-documents-intro" className="text-3xl font-bold text-white mt-1">
                   My Documents
                 </h1>
 
@@ -962,7 +977,7 @@ const Documents = () => {
       )}
 
       {error && (
-        <div className="flex items-start gap-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400 px-5 py-4 rounded-2xl animate-fade-up">
+        <ErrorMessage message={error}><div className="flex items-start gap-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400 px-5 py-4 rounded-2xl animate-fade-up">
 
           <AlertCircle
             size={20}
@@ -979,7 +994,7 @@ const Documents = () => {
             </p>
           </div>
 
-        </div>
+        </div></ErrorMessage>
       )}
 
       {/* REQUIREMENT STATISTICS */}
@@ -1321,7 +1336,7 @@ const Documents = () => {
                               type="button"
                               onClick={() =>
                                 handleView(
-                                  document.file_path
+                                  document
                                 )
                               }
                               className="inline-flex items-center gap-2 bg-[#123B5D] hover:bg-[#0F3553] text-white font-semibold px-4 py-2.5 rounded-xl text-sm transition-colors duration-200"
@@ -1889,7 +1904,7 @@ const Documents = () => {
                           type="button"
                           onClick={() =>
                             handleView(
-                              doc.file_path
+                              doc
                             )
                           }
                           disabled={

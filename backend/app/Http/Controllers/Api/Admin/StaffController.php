@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Staff;
 use App\Models\StaffPermission;
 use App\Models\User;
+use App\Rules\UniqueAccountEmail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -60,10 +61,11 @@ class StaffController extends Controller
             ],
 
             'email' => [
+                'bail',
                 'required',
                 'email',
                 'max:255',
-                'unique:users,email',
+                new UniqueAccountEmail(),
             ],
 
             'password' => [
@@ -196,6 +198,7 @@ class StaffController extends Controller
                 'staff_id' => $staff->id,
             ]);
 
+            app(\App\Services\WorkflowDecisionService::class)->event('staff',$staff->id,'staff_created',null,$staff->status,null,request()->user());
             return $staff;
         });
 
@@ -246,14 +249,12 @@ class StaffController extends Controller
             ],
 
             'email' => [
+                'bail',
                 'sometimes',
                 'required',
                 'email',
                 'max:255',
-                Rule::unique(
-                    'users',
-                    'email'
-                )->ignore($staff->user_id),
+                new UniqueAccountEmail($staff->user_id),
             ],
 
             'password' => [
@@ -344,6 +345,8 @@ class StaffController extends Controller
                 'sometimes',
                 'boolean',
             ],
+
+            'review_online_exams' => ['sometimes', 'boolean'],
 
             'manage_scholarships' => [
                 'sometimes',
@@ -467,6 +470,7 @@ class StaffController extends Controller
                 'manage_admissions',
                 'verify_documents',
                 'manage_exams',
+                'review_online_exams',
                 'manage_scholarships',
                 'manage_announcements',
                 'send_notifications',
@@ -485,6 +489,7 @@ class StaffController extends Controller
                     $permissionData
                 );
             }
+            app(\App\Services\WorkflowDecisionService::class)->event('staff',$staff->id,'account_permissions_or_assignments_updated',null,$staff->status,'Account, permission, or program assignment updated.',request()->user());
         });
 
         /*
@@ -511,6 +516,7 @@ class StaffController extends Controller
         DB::transaction(function () use ($staff) {
 
             $user = $staff->user;
+            app(\App\Services\WorkflowDecisionService::class)->event('staff',$staff->id,'staff_deleted',$staff->status,null,'Account removed by an administrator.',request()->user());
 
             /*
              * Delete staff profile first.

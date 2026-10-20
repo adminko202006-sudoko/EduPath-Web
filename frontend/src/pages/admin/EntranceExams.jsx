@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   ClipboardList,
@@ -24,17 +25,25 @@ import {
   Timer,
   CalendarCheck,
   CalendarX,
+  Award,
+  Save,
+  Unlock,
 } from 'lucide-react';
 
-import { useConfirmDialog, ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import { ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import { useConfirmDialog } from '../../components/ui/useConfirmDialog';
 import ModalPortal from '../../components/ui/ModalPortal';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import api from '../../services/api';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
+import ExamAssignmentDialog from './ExamAssignmentDialog';
+import ExamRosterPanel from '../../components/ExamRosterPanel';
 
 const EntranceExams = ({ confirm }) => {
   const { token } = useAuth();
 
   const [exams, setExams] = useState([]);
+  const loadVersion = useRef(0);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -45,10 +54,14 @@ const EntranceExams = ({ confirm }) => {
   const [showForm, setShowForm] = useState(false);
   const [editingExam, setEditingExam] = useState(null);
   const [viewingExam, setViewingExam] = useState(null);
+  const [assigningExam, setAssigningExam] = useState(null);
 
   const [saving, setSaving] = useState(false);
+  const [rosterFile, setRosterFile] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
+  const [savingAssignmentId, setSavingAssignmentId] = useState(null);
+  const [releasingResults, setReleasingResults] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -68,7 +81,8 @@ const EntranceExams = ({ confirm }) => {
   // LOAD EXAMS
   // =========================================================
 
-  const loadExams = async (isRefresh = false) => {
+  const loadExams = useCallback(async (isRefresh = false) => {
+    const version = ++loadVersion.current;
     try {
       if (isRefresh) {
         setRefreshing(true);
@@ -86,34 +100,39 @@ const EntranceExams = ({ confirm }) => {
 
       const data = response.data;
 
-      setExams(
-        Array.isArray(data)
-          ? data
-          : data?.data || []
-      );
+      const loadedExams = Array.isArray(data) ? data : data?.data || [];
+      if (version !== loadVersion.current) return [];
+      setExams(loadedExams);
+      return loadedExams;
     } catch (err) {
+      if (version !== loadVersion.current) return [];
       console.error('Failed to load exams:', err);
 
       setError(
         err.response?.data?.message ||
           'Failed to load entrance exams.'
       );
+      return [];
     } finally {
-      if (isRefresh) {
+      if (version === loadVersion.current) {
         setRefreshing(false);
-      } else {
         setLoading(false);
       }
     }
-  };
+  }, [token]);
+  useAutoRefresh(() => {
+    loadExams(true);
+  });
 
   useEffect(() => {
     if (!token) {
       return;
     }
 
-    loadExams();
-  }, [token]);
+    queueMicrotask(() => {
+      loadExams();
+    });
+  }, [token, loadExams]);
 
   // =========================================================
   // FORM
@@ -140,6 +159,7 @@ const EntranceExams = ({ confirm }) => {
   };
 
   const resetForm = () => {
+    setRosterFile(null);
     setForm({
       title: '',
       description: '',
@@ -156,6 +176,7 @@ const EntranceExams = ({ confirm }) => {
   };
 
   const openCreateForm = () => {
+    setRosterFile(null);
     setEditingExam(null);
 
     setForm({
@@ -246,6 +267,7 @@ const EntranceExams = ({ confirm }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (saving) return;
 
     setError('');
     setSuccess('');
@@ -275,7 +297,14 @@ const EntranceExams = ({ confirm }) => {
         is_active: Boolean(form.is_active),
       };
 
-      if (editingExam) {
+      if (rosterFile) {
+        const multipart = new FormData();
+        Object.entries(payload).forEach(([key, value]) => multipart.append(key, value === null ? '' : typeof value === 'boolean' ? (value ? '1' : '0') : String(value)));
+        multipart.append('roster_pdf', rosterFile);
+        if (editingExam) multipart.append('_method', 'PUT');
+        const response = await api.post(editingExam ? `/admin/exams/${editingExam.id}` : '/admin/exams', multipart);
+        setSuccess(response.data?.message || 'Entrance exam and roster PDF saved.');
+      } else if (editingExam) {
         const response = await api.put(
           `/admin/exams/${editingExam.id}`,
           payload,
@@ -344,6 +373,7 @@ const EntranceExams = ({ confirm }) => {
   // =========================================================
 
   const editExam = (exam) => {
+    setRosterFile(null);
     setEditingExam(exam);
 
     setForm({
@@ -386,10 +416,85 @@ const EntranceExams = ({ confirm }) => {
   };
 
   // =========================================================
+  // EXAM RESULTS: SAVE SCORES AND OFFICIAL RELEASE
+  // =========================================================
+
+  const saveAssignmentResult = async (event, assignment) => {
+    event.preventDefault();
+    if (!viewingExam || !assignment?.id) return;
+
+    const formData = new FormData(event.currentTarget);
+    const rawScore = String(formData.get('score') ?? '').trim();
+    const payload = {
+      status: String(formData.get('status') || 'scheduled'),
+      score: rawScore === '' ? null : Number(rawScore),
+      remarks: String(formData.get('remarks') || '').trim() || null,
+    };
+
+    if (payload.score !== null && (!Number.isFinite(payload.score) || payload.score < 0 || payload.score > 100)) {
+      setError('Score must be between 0 and 100.');
+      return;
+    }
+
+    try {
+      setSavingAssignmentId(assignment.id);
+      setError('');
+      setSuccess('');
+      const response = await api.put(
+        `/admin/exams/${viewingExam.id}/assignments/${assignment.id}`,
+        payload,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      setSuccess(response.data?.message || 'Applicant result saved successfully.');
+      const refreshed = await loadExams(true);
+      const updatedExam = refreshed.find((exam) => Number(exam.id) === Number(viewingExam.id));
+      if (updatedExam) setViewingExam(updatedExam);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to save the applicant result.');
+    } finally {
+      setSavingAssignmentId(null);
+    }
+  };
+
+  const releaseExamResults = async () => {
+    if (!viewingExam) return;
+    const confirmed = await confirm({
+      title: 'Release Exam Results',
+      message: `Release the official results for "${viewingExam.title}"? Applicants will be able to view their scores and remarks.`,
+      confirmLabel: 'Release Results',
+      destructive: false,
+    });
+    if (!confirmed) return;
+
+    try {
+      setReleasingResults(true);
+      setError('');
+      setSuccess('');
+      const response = await api.post(
+        `/admin/exams/${viewingExam.id}/release-results`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      setSuccess(response.data?.message || 'Exam results released successfully.');
+      const refreshed = await loadExams(true);
+      const updatedExam = refreshed.find((exam) => Number(exam.id) === Number(viewingExam.id));
+      if (updatedExam) setViewingExam(updatedExam);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to release exam results.');
+    } finally {
+      setReleasingResults(false);
+    }
+  };
+
+  // =========================================================
   // DELETE
   // =========================================================
 
   const deleteExam = async (exam) => {
+    if (exam.results_released_at || exam.exam_assignments?.length) {
+      setError('This examination has applicant records or released results. Deactivate it to preserve its history.');
+      return;
+    }
     const confirmed = await confirm({
       title: 'Delete Examination',
       message: `Are you sure you want to delete "${exam.title}"?`,
@@ -445,20 +550,7 @@ const EntranceExams = ({ confirm }) => {
       setError('');
       setSuccess('');
 
-      const payload = {
-        title: exam.title,
-        description: exam.description || null,
-        exam_date: exam.exam_date,
-        start_time: exam.start_time,
-        end_time: exam.end_time,
-        venue: exam.venue,
-        capacity:
-          exam.capacity !== null &&
-          exam.capacity !== undefined
-            ? Number(exam.capacity)
-            : null,
-        is_active: !exam.is_active,
-      };
+      const payload = { is_active: !exam.is_active };
 
       const response = await api.put(
         `/admin/exams/${exam.id}`,
@@ -764,7 +856,7 @@ const EntranceExams = ({ confirm }) => {
       <div className="page-transition space-y-8">
 
         <div className="rounded-2xl shadow-lg overflow-hidden bg-white dark:bg-gray-900">
-          <div className="ep-brand-gradient p-6 sm:p-8">
+          <div className="ep-page-banner ep-brand-gradient p-6 sm:p-8">
             <div className="animate-pulse space-y-4">
               <div className="h-8 w-44 rounded-lg bg-white/20" />
               <div className="h-10 w-64 rounded-lg bg-white/20" />
@@ -864,7 +956,7 @@ const EntranceExams = ({ confirm }) => {
           HERO
       ===================================================== */}
 
-      <div className="relative overflow-hidden rounded-2xl shadow-lg ep-brand-gradient">
+      <div className="ep-page-banner relative overflow-hidden rounded-2xl shadow-lg ep-brand-gradient">
 
         <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full bg-white/10" />
         <div className="absolute -bottom-20 -left-10 w-56 h-56 rounded-full bg-white/5" />
@@ -962,7 +1054,7 @@ const EntranceExams = ({ confirm }) => {
       ===================================================== */}
 
       {error && (
-        <div className="flex items-start gap-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-4 rounded-2xl animate-fade-up">
+        <ErrorMessage message={error}><div className="flex items-start gap-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-4 rounded-2xl animate-fade-up">
 
           <AlertCircle
             size={20}
@@ -979,7 +1071,7 @@ const EntranceExams = ({ confirm }) => {
             </p>
           </div>
 
-        </div>
+        </div></ErrorMessage>
       )}
 
       {success && (
@@ -1236,6 +1328,17 @@ const EntranceExams = ({ confirm }) => {
 
             {/* SCHEDULE */}
 
+            <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">100 questions, 100 points. Passing score: 40/100 (40%). FHE approval and awarding require an officially released passing result.</p>
+
+            <div className="flex flex-wrap gap-2" aria-label="Session time presets">
+              {[
+                ['08:00', '10:00', '8:00 AM - 10:00 AM'],
+                ['10:00', '12:00', '10:00 AM - 12:00 PM'],
+                ['13:00', '14:00', '1:00 PM - 2:00 PM'],
+                ['14:00', '16:00', '2:00 PM - 4:00 PM'],
+              ].map(([start, end, label]) => <button key={start} type="button" onClick={() => setForm(previous => ({ ...previous, start_time: start, end_time: end }))} className={`min-h-11 rounded-lg border px-3 py-2 text-sm ${form.start_time === start && form.end_time === end ? 'border-[#123B5D] bg-[#123B5D] text-white' : 'border-slate-300 text-slate-700 dark:border-slate-600 dark:text-slate-200'}`}>{label}</button>)}
+            </div>
+
             <div>
 
               <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
@@ -1397,6 +1500,11 @@ const EntranceExams = ({ confirm }) => {
             </div>
 
             {/* STATUS */}
+
+            <label className="grid gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200">Prepared applicant roster (optional PDF, up to 10 MB)
+              <input key={editingExam?.id ?? 'new'} type="file" accept=".pdf,application/pdf" disabled={saving} onChange={event => setRosterFile(event.target.files?.[0] || null)} className="w-full min-w-0 rounded-xl border border-gray-200 p-3 dark:border-gray-700" />
+              <span className="text-xs font-normal text-gray-500 dark:text-gray-400">Assign applicants after saving to generate a roster and make session PDFs available to them. Include names and schedule details only.</span>
+            </label>
 
             <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-4 bg-gray-50 dark:bg-gray-800/60">
 
@@ -2045,6 +2153,8 @@ const EntranceExams = ({ confirm }) => {
                             View
                           </button>
 
+                          <button type="button" onClick={() => setAssigningExam(exam)} disabled={!exam.is_active || Boolean(exam.results_released_at)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#123B5D] px-4 py-2.5 font-semibold text-white transition-colors hover:bg-[#0B2941] disabled:cursor-not-allowed disabled:opacity-40"><Users size={17} />Assign Applicants</button>
+
                           {/* TOGGLE */}
 
                           <button
@@ -2098,7 +2208,7 @@ const EntranceExams = ({ confirm }) => {
                             Edit
                           </button>
 
-                          {/* DELETE */}
+                          {/* Assigned exams are retained; use Deactivate. */}
 
                           <button
                             type="button"
@@ -2107,7 +2217,7 @@ const EntranceExams = ({ confirm }) => {
                             }
                             disabled={
                               deletingId ===
-                              exam.id
+                              exam.id || Boolean(exam.results_released_at) || (exam.exam_assignments?.length || 0) > 0
                             }
                             className="inline-flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white px-4 py-2.5 rounded-xl font-semibold transition shadow-sm"
                           >
@@ -2127,7 +2237,7 @@ const EntranceExams = ({ confirm }) => {
                             {deletingId ===
                             exam.id
                               ? 'Deleting...'
-                              : 'Delete'}
+                              : (exam.results_released_at || exam.exam_assignments?.length) ? 'History retained' : 'Delete'}
 
                           </button>
 
@@ -2331,6 +2441,82 @@ const EntranceExams = ({ confirm }) => {
 
               </div>
 
+              <ExamRosterPanel key={viewingExam.id} exam={viewingExam} onUpdated={updated => {
+                setViewingExam(previous => ({ ...previous, ...updated }));
+                setExams(previous => previous.map(exam => exam.id === updated.id ? { ...exam, ...updated } : exam));
+              }} />
+
+              <section className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4 dark:border-blue-900/50 dark:bg-blue-950/20">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h3 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white">
+                      <Award size={18} className="text-[#C99A00]" /> Applicant Results
+                    </h3>
+                    <p className="mt-1 text-xs leading-5 text-gray-600 dark:text-gray-300">
+                      100 questions / 100 points. Passing score: 40/100. Scores and remarks remain private until official release.
+                    </p>
+                  </div>
+                  {viewingExam.results_released_at ? (
+                    <span className="inline-flex items-center gap-2 rounded-full bg-green-100 px-3 py-1.5 text-xs font-bold text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                      <CheckCircle size={15} /> Results Released
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={releaseExamResults}
+                      disabled={releasingResults}
+                      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#123B5D] px-4 py-2.5 text-sm font-semibold text-white transition-colors duration-200 ease-in-out hover:bg-[#0F3553] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {releasingResults ? <Loader2 size={16} className="animate-spin" /> : <Unlock size={16} />}
+                      {releasingResults ? 'Releasing…' : 'Release Results'}
+                    </button>
+                  )}
+                </div>
+
+                {error && (
+                  <ErrorMessage message={error}><p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">{error}</p></ErrorMessage>
+                )}
+                {success && (
+                  <p role="status" className="mt-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700 dark:border-green-900/50 dark:bg-green-950/30 dark:text-green-300">{success}</p>
+                )}
+
+                {(() => {
+                  const assignments = viewingExam.exam_assignments || viewingExam.examAssignments || [];
+                  if (!assignments.length) {
+                    return <p className="mt-4 rounded-xl border border-dashed border-gray-300 p-4 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">No applicants are assigned to this exam yet. Results cannot be released until assignments exist.</p>;
+                  }
+                  return <div className="mt-4 space-y-3">{assignments.map((assignment) => {
+                    const user = assignment.applicant?.user || {};
+                    const applicantName = user.name || [user.first_name, user.last_name].filter(Boolean).join(' ') || user.email || `Applicant #${assignment.applicant_id ?? assignment.id}`;
+                    return (
+                      <form key={assignment.id} onSubmit={(event) => saveAssignmentResult(event, assignment)} className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900/70">
+                        <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                          <p className="font-semibold text-gray-900 dark:text-white">{applicantName}</p>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">Assignment #{assignment.id}</span>
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">
+                            Attendance / Result Status
+                            <select name="status" defaultValue={assignment.status || 'scheduled'} disabled={Boolean(viewingExam.results_released_at)} className="mt-1.5 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-white">
+                              <option value="scheduled">Scheduled</option><option value="completed">Completed</option><option value="absent">Absent</option>
+                            </select>
+                          </label>
+                          <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">
+                            Score out of 100 (passing: 40)
+                            <input name="score" type="number" min="0" max="100" step="0.01" defaultValue={assignment.score ?? ''} disabled={Boolean(viewingExam.results_released_at)} placeholder="Score out of 100" className="mt-1.5 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
+                          </label>
+                        </div>
+                        <label className="mt-3 block text-xs font-semibold text-gray-600 dark:text-gray-300">
+                          Remarks
+                          <textarea name="remarks" rows="2" maxLength="5000" defaultValue={assignment.remarks || ''} disabled={Boolean(viewingExam.results_released_at)} placeholder="Optional remarks for the applicant" className="mt-1.5 w-full resize-y rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
+                        </label>
+                        {!viewingExam.results_released_at && <div className="mt-3 flex justify-end"><button type="submit" disabled={savingAssignmentId === assignment.id} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#123B5D] px-3.5 py-2 text-sm font-semibold text-white transition-colors duration-200 ease-in-out hover:bg-[#0F3553] disabled:cursor-not-allowed disabled:opacity-60">{savingAssignmentId === assignment.id ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}{savingAssignmentId === assignment.id ? 'Saving…' : 'Save Result'}</button></div>}
+                      </form>
+                    );
+                  })}</div>;
+                })()}
+              </section>
+
               <div className="flex flex-col sm:flex-row gap-3 pt-2">
 
                 <button
@@ -2367,6 +2553,12 @@ const EntranceExams = ({ confirm }) => {
         </div>
         </ModalPortal>
       )}
+
+      {assigningExam && <ExamAssignmentDialog exam={assigningExam} onClose={() => setAssigningExam(null)} onAssigned={(updatedExam, message) => {
+        setExams((current) => current.map((item) => item.id === updatedExam.id ? updatedExam : item));
+        setSuccess(message || 'Applicants assigned successfully.');
+        setError('');
+      }} />}
 
     </div>
   );

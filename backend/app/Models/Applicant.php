@@ -20,6 +20,13 @@ class Applicant extends Model
         'address',
         'profile_photo',
         'is_archived',
+        'primary_school',
+        'primary_school_year',
+        'junior_high_school',
+        'senior_high_school',
+        'shs_strand',
+        'lrn',
+        'previous_college_university',
     ];
 
     protected function casts(): array

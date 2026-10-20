@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useEffect, useRef, useState } from 'react';
 
 import {
   Award,
@@ -12,8 +13,9 @@ import {
   X,
 } from 'lucide-react';
 
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import api from '../../services/api';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 const Scholarships = () => {
   const { token } = useAuth();
@@ -21,15 +23,24 @@ const Scholarships = () => {
   const [scholarships, setScholarships] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
+  const loadedToken = useRef(null);
 
   const [applyingId, setApplyingId] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
   const [appliedScholarships, setAppliedScholarships] = useState([]);
 
+  useAutoRefresh(() => {
+    setReloadKey((key) => key + 1);
+  });
+
   useEffect(() => {
+    // Referenced so the auto-refresh key re-runs this loader.
+    void reloadKey;
+
     const loadScholarships = async () => {
       try {
-        setLoading(true);
+        if (loadedToken.current !== token) setLoading(true);
         setError('');
 
         const response = await api.get('/applicant/scholarships', {
@@ -43,6 +54,7 @@ const Scholarships = () => {
         setScholarships(
           Array.isArray(data) ? data : data?.data || []
         );
+        loadedToken.current = token;
       } catch (error) {
         console.error('Failed to load scholarships:', error);
 
@@ -58,7 +70,7 @@ const Scholarships = () => {
     if (token) {
       loadScholarships();
     }
-  }, [token]);
+  }, [token, reloadKey]);
 
   const formatAmount = (amount) => {
     if (
@@ -80,32 +92,30 @@ const Scholarships = () => {
       return 'Not specified';
     }
 
-    return new Date(date).toLocaleDateString('en-PH', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
+    const parsed = new Date(date);
+    if (Number.isNaN(parsed.getTime())) return String(date);
+    const dateLabel = parsed.toLocaleDateString('en-PH', {
+      year: 'numeric', month: 'long', day: 'numeric',
     });
+    return /[T ]\d{2}:\d{2}/.test(String(date))
+      ? `${dateLabel}, ${parsed.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })}`
+      : dateLabel;
   };
 
   const isApplicationOpen = (scholarship) => {
-    const today = new Date();
-
-    const start = scholarship.application_start
-      ? new Date(scholarship.application_start)
-      : null;
-
-    const end = scholarship.application_end
-      ? new Date(scholarship.application_end)
-      : null;
-
-    if (start && today < start) {
-      return false;
-    }
-
-    if (end && today > end) {
-      return false;
-    }
-
+    const now = new Date();
+    const start = scholarship.application_start_at
+      ? new Date(scholarship.application_start_at)
+      : scholarship.application_start
+        ? new Date(`${String(scholarship.application_start).slice(0, 10)}T00:00:00`)
+        : null;
+    const end = scholarship.application_end_at
+      ? new Date(scholarship.application_end_at)
+      : scholarship.application_end
+        ? new Date(`${String(scholarship.application_end).slice(0, 10)}T23:59:59`)
+        : null;
+    if (start && now < start) return false;
+    if (end && now > end) return false;
     return true;
   };
 
@@ -201,7 +211,7 @@ const Scholarships = () => {
 
         {/* Hero */}
         <section className="ep-card overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="ep-brand-gradient p-6 text-white sm:p-8">
+          <div className="ep-page-banner ep-brand-gradient p-6 text-white sm:p-8">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
               <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/15">
                 <Award size={30} />
@@ -212,7 +222,7 @@ const Scholarships = () => {
                   Applicant Portal
                 </p>
 
-                <h1 className="mt-1 text-2xl font-bold sm:text-3xl">
+                <h1 data-tutorial-target="applicant-scholarships-intro" className="mt-1 text-2xl font-bold sm:text-3xl">
                   Scholarships
                 </h1>
 
@@ -257,7 +267,7 @@ const Scholarships = () => {
 
         {/* Error */}
         {error && (
-          <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
+          <ErrorMessage message={error}><div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
             <AlertCircle
               size={19}
               className="mt-0.5 shrink-0"
@@ -281,7 +291,7 @@ const Scholarships = () => {
             >
               <X size={17} />
             </button>
-          </div>
+          </div></ErrorMessage>
         )}
 
         {/* Empty State */}
@@ -423,7 +433,7 @@ const Scholarships = () => {
 
                         <p className="font-medium text-slate-800 dark:text-slate-200">
                           {formatDate(
-                            scholarship.application_start
+                            scholarship.application_start_at || scholarship.application_start
                           )}
                         </p>
                       </div>
@@ -435,7 +445,7 @@ const Scholarships = () => {
 
                         <p className="font-medium text-slate-800 dark:text-slate-200">
                           {formatDate(
-                            scholarship.application_end
+                            scholarship.application_end_at || scholarship.application_end
                           )}
                         </p>
                       </div>
@@ -484,19 +494,6 @@ const Scholarships = () => {
 
                   {/* Additional Information */}
                   <div className="mb-6 grid gap-3 sm:grid-cols-2">
-                    {scholarship.available_slots !== null &&
-                      scholarship.available_slots !== undefined && (
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50">
-                          <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                            Available Slots
-                          </p>
-
-                          <p className="mt-1 text-sm font-semibold text-slate-800 dark:text-white">
-                            {scholarship.available_slots}
-                          </p>
-                        </div>
-                      )}
-
                     {scholarship.program_type && (
                       <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50">
                         <p className="text-xs font-medium uppercase tracking-wide text-slate-400">

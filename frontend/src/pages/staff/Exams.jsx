@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ClipboardList,
   Pencil,
@@ -14,9 +15,11 @@ import {
   UserRound,
 } from 'lucide-react';
 
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import api from '../../services/api';
-import { useConfirmDialog, ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
+import { ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import { useConfirmDialog } from '../../components/ui/useConfirmDialog';
 
 const StaffExams = ({ confirm }) => {
   const { token } = useAuth();
@@ -40,7 +43,7 @@ const StaffExams = ({ confirm }) => {
     is_active: true,
   });
 
-  const loadExams = async () => {
+  const loadExams = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
@@ -62,13 +65,18 @@ const StaffExams = ({ confirm }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [token]);
+  useAutoRefresh(() => {
+    loadExams();
+  });
 
   useEffect(() => {
     if (token) {
-      loadExams();
+      queueMicrotask(() => {
+        loadExams();
+      });
     }
-  }, [token]);
+  }, [token, loadExams]);
 
   const formatDate = (date) => {
     if (!date) {
@@ -373,7 +381,7 @@ const StaffExams = ({ confirm }) => {
     <div className="space-y-8">
 
       {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+      <div className="ep-page-banner rounded-2xl p-6 shadow-lg sm:p-8 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
         <div>
           <div className="flex items-center gap-3 mb-2">
             <div className="w-11 h-11 rounded-xl bg-[#123B5D] flex items-center justify-center">
@@ -406,7 +414,7 @@ const StaffExams = ({ confirm }) => {
 
       {/* Alerts */}
       {error && (
-        <div className="flex items-start gap-3 bg-red-50 border border-red-200 text-red-700 px-4 py-4 rounded-xl">
+        <ErrorMessage message={error}><div className="flex items-start gap-3 bg-red-50 border border-red-200 text-red-700 px-4 py-4 rounded-xl">
           <AlertCircle
             size={20}
             className="mt-0.5 shrink-0"
@@ -421,7 +429,7 @@ const StaffExams = ({ confirm }) => {
               {error}
             </p>
           </div>
-        </div>
+        </div></ErrorMessage>
       )}
 
       {success && (

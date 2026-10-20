@@ -15,10 +15,13 @@ import {
   UserCircle,
 } from 'lucide-react';
 
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import ThemeToggle from './ThemeToggle';
-import { ConfirmDialogHost, useConfirmDialog } from './ui/ConfirmDialog';
+import { ConfirmDialogHost } from './ui/ConfirmDialog';
+import { useConfirmDialog } from './ui/useConfirmDialog';
 import tmcLogo from '../assets/tmcLogo.jpg';
+import { getServerBaseUrl } from '../services/api';
+import { resolveAccountPhoto } from '../services/profilePhoto';
 
 const ROLE_CONFIG = {
   admin: {
@@ -43,6 +46,7 @@ const Navbar = ({ onToggleMobileMenu }) => {
   const navigate = useNavigate();
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [failedPhoto, setFailedPhoto] = useState(null);
   const dropdownRef = useRef(null);
   const { confirm, dialog } = useConfirmDialog();
 
@@ -62,6 +66,7 @@ const Navbar = ({ onToggleMobileMenu }) => {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join('');
+  const profilePhotoUrl = resolveAccountPhoto(user, getServerBaseUrl());
 
   useEffect(() => {
     const handleOutsideClick = (event) => {
@@ -111,17 +116,18 @@ const Navbar = ({ onToggleMobileMenu }) => {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-slate-200/80 bg-white/95 shadow-sm shadow-slate-900/[0.03] backdrop-blur-xl transition-colors duration-200 dark:border-slate-800/80 dark:bg-[#091827]/95 dark:shadow-black/10">
+    <header className="ep-topbar sticky top-0 z-50 w-full border-b border-slate-200/80 bg-white/95 shadow-sm shadow-slate-900/[0.03] backdrop-blur-xl transition-colors duration-200 dark:border-slate-800/80 dark:bg-[#091827]/95 dark:shadow-black/10">
       {/* Brand accent */}
       <div className="h-[3px] w-full bg-gradient-to-r from-[#123B5D] via-teal-500 to-[#F4B400]" />
 
-      <div className="flex h-[77px] items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+      <div className="ep-topbar-inner flex h-[77px] items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
         {/* Brand and mobile navigation */}
-        <div className="flex min-w-0 items-center gap-3">
+        <div className="ep-topbar-brand flex min-w-0 items-center gap-3">
           <button
             type="button"
             onClick={onToggleMobileMenu}
             aria-label="Toggle navigation menu"
+            data-tutorial-target={role === 'applicant' ? 'applicant-mobile-menu' : undefined}
             className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 transition-colors duration-200 hover:border-teal-500/40 hover:bg-teal-50 hover:text-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:border-teal-400/40 dark:hover:bg-slate-700 lg:hidden"
           >
             <Menu size={21} />
@@ -129,7 +135,7 @@ const Navbar = ({ onToggleMobileMenu }) => {
 
           <Link
             to={roleConfig.dashboard}
-            className="group flex min-w-0 items-center gap-3 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+            className="ep-topbar-logo group flex min-w-0 items-center gap-3 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
             aria-label="EduPath dashboard"
           >
             <div className="relative shrink-0">
@@ -138,7 +144,7 @@ const Navbar = ({ onToggleMobileMenu }) => {
               <img
                 src={tmcLogo}
                 alt="Trinidad Municipal College logo"
-                className="relative h-11 w-11 rounded-xl border border-slate-200 bg-white object-contain p-1 shadow-sm transition-transform duration-200 ] dark:border-slate-700 dark:bg-slate-100 sm:h-12 sm:w-12"
+                className="relative h-11 w-11 rounded-xl border border-slate-200 bg-white object-contain p-1 shadow-sm transition-transform duration-200 dark:border-slate-700 dark:bg-slate-100 sm:h-12 sm:w-12"
               />
             </div>
 
@@ -182,15 +188,17 @@ const Navbar = ({ onToggleMobileMenu }) => {
               aria-expanded={dropdownOpen}
               aria-haspopup="menu"
               aria-label="Open user account menu"
-              className={`group flex h-11 items-center gap-2 rounded-xl border px-2 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 sm:gap-3 sm:px-3 ${
+              className={`ep-account-trigger group flex h-11 items-center gap-2 rounded-xl border px-2 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 sm:gap-3 sm:px-3 ${
                 dropdownOpen
                   ? 'border-teal-500/40 bg-teal-50 dark:border-teal-400/30 dark:bg-teal-400/10'
                   : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800/70 dark:hover:border-slate-600 dark:hover:bg-slate-800'
               }`}
             >
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#123B5D] to-teal-600 text-xs font-bold text-white shadow-sm">
-                {initials || <UserCircle size={18} />}
+              <div className="ep-account-avatar flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#123B5D] to-teal-600 text-xs font-bold text-white shadow-sm">
+                {profilePhotoUrl && failedPhoto !== profilePhotoUrl ? <img src={profilePhotoUrl} alt="" onError={() => setFailedPhoto(profilePhotoUrl)} className="h-full w-full rounded-full object-cover" /> : initials || <UserCircle size={18} />}
               </div>
+
+              <span className="ep-account-mobile-label text-[10px] font-semibold text-[#123B5D] dark:text-slate-100 sm:hidden">Profile</span>
 
               <div className="hidden max-w-[150px] text-left sm:block">
                 <p className="truncate text-sm font-bold leading-5 text-slate-800 dark:text-slate-100">
@@ -202,7 +210,7 @@ const Navbar = ({ onToggleMobileMenu }) => {
                     className="text-teal-600 dark:text-teal-400"
                   />
                   <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
-                    {roleConfig.label}
+                    My Profile <span aria-hidden="true">·</span> {roleConfig.label}
                   </p>
                 </div>
               </div>
@@ -218,13 +226,13 @@ const Navbar = ({ onToggleMobileMenu }) => {
             {dropdownOpen && (
               <div
                 role="menu"
-                className="absolute right-0 top-[calc(100%+12px)] z-[60] w-[min(19rem,calc(100vw-2rem))] origin-top-right animate-fade-up overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-900/10 dark:border-slate-700 dark:bg-[#102235] dark:shadow-black/30"
+                className="ep-account-menu absolute right-0 top-[calc(100%+12px)] z-[60] w-[min(19rem,calc(100vw-2rem))] origin-top-right animate-fade-up overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-900/10 dark:border-slate-700 dark:bg-[#102235] dark:shadow-black/30"
               >
                 {/* Account identity */}
                 <div className="border-b border-slate-100 bg-gradient-to-br from-slate-50 to-white px-4 py-4 dark:border-slate-700 dark:from-[#132b40] dark:to-[#102235]">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#123B5D] to-teal-600 text-sm font-bold text-white shadow-sm">
-                      {initials || <UserCircle size={21} />}
+                    <div className="ep-account-avatar flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#123B5D] to-teal-600 text-sm font-bold text-white shadow-sm">
+                      {profilePhotoUrl && failedPhoto !== profilePhotoUrl ? <img src={profilePhotoUrl} alt="" onError={() => setFailedPhoto(profilePhotoUrl)} className="h-full w-full rounded-full object-cover" /> : initials || <UserCircle size={21} />}
                     </div>
 
                     <div className="min-w-0 flex-1">

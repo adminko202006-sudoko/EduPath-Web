@@ -16,7 +16,10 @@ class PasswordResetOtp extends Model
         'expires_at',
         'attempts',
         'verified_at',
+        'reset_token_hash',
     ];
+
+    protected $hidden = ['otp_hash', 'reset_token_hash'];
 
     protected function casts(): array
     {

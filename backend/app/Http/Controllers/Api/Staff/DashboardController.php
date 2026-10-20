@@ -12,6 +12,24 @@ use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
+    public function applicationCounts(Request $request)
+    {
+        $staff = $request->user()->staff;
+        if (!$staff || $staff->status !== 'active') {
+            return response()->json(['success' => false, 'message' => 'An active staff profile is required.'], 403);
+        }
+        $programIds = $staff->academicPrograms()->pluck('academic_programs.id');
+        $permissions = $staff->permissions;
+
+        return response()->json(['success' => true, 'data' => [
+            'pending_applications' => $permissions?->manage_admissions
+                ? AdmissionApplication::where('status', 'pending')->whereIn('academic_program_id', $programIds)->count() : 0,
+            'pending_scholarship_applications' => $permissions?->manage_scholarships
+                ? ScholarshipApplication::where('status', 'pending')
+                    ->whereHas('applicant.admissionApplications', fn ($query) => $query->whereIn('academic_program_id', $programIds))->count() : 0,
+        ]]);
+    }
+
     public function index(Request $request)
     {
         $staff = $request->user()->staff;
@@ -34,48 +52,55 @@ class DashboardController extends Controller
         $programIds = $staff->academicPrograms()
             ->pluck('academic_programs.id');
 
+        $permissions = $staff->permissions;
+        $canReport = (bool) $permissions?->view_reports;
+        $canAdmissions = $canReport || (bool) $permissions?->manage_admissions;
+        $canScholarships = $canReport || (bool) $permissions?->manage_scholarships;
+        $canExams = $canReport || (bool) $permissions?->manage_exams;
+        $canAnnouncements = (bool) $permissions?->manage_announcements;
+
         // Total applicants under assigned programs
-        $totalApplicants = Applicant::whereHas(
+        $totalApplicants = $canAdmissions ? Applicant::whereHas(
             'admissionApplications',
             function ($query) use ($programIds) {
                 $query->whereIn('academic_program_id', $programIds);
             }
-        )->count();
+        )->count() : 0;
 
         // Pending applications
-        $pendingApplications = AdmissionApplication::whereIn(
+        $pendingApplications = $canAdmissions ? AdmissionApplication::whereIn(
             'academic_program_id',
             $programIds
         )
         ->where('status', 'pending')
-        ->count();
+        ->count() : 0;
 
         // Approved applications
-        $approvedApplications = AdmissionApplication::whereIn(
+        $approvedApplications = $canAdmissions ? AdmissionApplication::whereIn(
             'academic_program_id',
             $programIds
         )
         ->where('status', 'approved')
-        ->count();
+        ->count() : 0;
 
         // Rejected applications
-        $rejectedApplications = AdmissionApplication::whereIn(
+        $rejectedApplications = $canAdmissions ? AdmissionApplication::whereIn(
             'academic_program_id',
             $programIds
         )
         ->where('status', 'rejected')
-        ->count();
+        ->count() : 0;
 
         // Scholarship applicants under assigned programs
-        $scholarshipApplicants = ScholarshipApplication::whereHas(
+        $scholarshipApplicants = $canScholarships ? ScholarshipApplication::whereHas(
             'applicant.admissionApplications',
             function ($query) use ($programIds) {
                 $query->whereIn('academic_program_id', $programIds);
             }
-        )->count();
+        )->count() : 0;
 
         // Upcoming entrance exams for applicants under assigned programs
-        $upcomingExams = EntranceExam::where(
+        $upcomingExams = $canExams ? EntranceExam::where(
             'exam_date',
             '>=',
             now()->toDateString()
@@ -84,18 +109,20 @@ class DashboardController extends Controller
         ->whereHas('examAssignments.applicant.admissionApplications', function ($query) use ($programIds) {
             $query->whereIn('academic_program_id', $programIds);
         })
-        ->count();
+        ->count() : 0;
 
         // Published announcements
-        $announcements = Announcement::where(
+        $announcements = $canAnnouncements ? Announcement::where(
             'status',
             'published'
-        )->count();
+        )->where(function ($query) {
+            $query->whereNull('published_at')->orWhere('published_at', '<=', now());
+        })->count() : 0;
 
         // Recent applicants under assigned programs
-        $recentApplicants = Applicant::with([
+        $recentApplicants = $canAdmissions ? Applicant::with([
             'user',
-            'admissionApplications.academicProgram'
+            'admissionApplications' => fn ($query) => $query->whereIn('academic_program_id', $programIds)->with('academicProgram'),
         ])
         ->whereHas(
             'admissionApplications',
@@ -105,7 +132,7 @@ class DashboardController extends Controller
         )
         ->latest()
         ->take(5)
-        ->get();
+        ->get() : collect();
 
         return response()->json([
             'success' => true,
@@ -116,6 +143,9 @@ class DashboardController extends Controller
                 'approved_applications' => $approvedApplications,
                 'rejected_applications' => $rejectedApplications,
                 'scholarship_applicants' => $scholarshipApplicants,
+                'pending_scholarship_applications' => $canScholarships ? ScholarshipApplication::where('status', 'pending')
+                    ->whereHas('applicant.admissionApplications', fn ($query) => $query->whereIn('academic_program_id', $programIds))
+                    ->count() : 0,
                 'upcoming_exams' => $upcomingExams,
                 'published_announcements' => $announcements,
                 'recent_applicants' => $recentApplicants,

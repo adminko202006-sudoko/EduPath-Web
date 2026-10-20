@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import {
@@ -39,6 +39,51 @@ import classroomImage from '../assets/about/tmc-classroom.jpg';
 import activitiesImage from '../assets/about/tmc-activities.jpg';
 import communityImage from '../assets/about/tmc-community.jpg';
 
+const images = [
+  {
+    id: 'campus',
+    title: 'TMC Campus',
+    description:
+      'The Trinidad Municipal College campus and learning environment.',
+    image: campusImage,
+  },
+  {
+    id: 'students',
+    title: 'Students',
+    description:
+      'Students pursuing their educational goals at Trinidad Municipal College.',
+    image: studentsImage,
+  },
+  {
+    id: 'faculty',
+    title: 'Faculty and Staff',
+    description:
+      'Faculty and staff supporting students throughout their academic journey.',
+    image: facultyImage,
+  },
+  {
+    id: 'classroom',
+    title: 'Learning Environment',
+    description:
+      'A learning environment designed to support academic development.',
+    image: classroomImage,
+  },
+  {
+    id: 'activities',
+    title: 'School Activities',
+    description:
+      'Academic, student, and community activities at the college.',
+    image: activitiesImage,
+  },
+  {
+    id: 'community',
+    title: 'Community Engagement',
+    description:
+      'Activities that connect the college with its surrounding community.',
+    image: communityImage,
+  },
+];
+
 const About = () => {
   const [selectedImage, setSelectedImage] = useState(null);
   const [zoom, setZoom] = useState(1);
@@ -54,52 +99,7 @@ const About = () => {
     y: 0,
   });
 
-  const images = [
-    {
-      id: 'campus',
-      title: 'TMC Campus',
-      description:
-        'The Trinidad Municipal College campus and learning environment.',
-      image: campusImage,
-    },
-    {
-      id: 'students',
-      title: 'Students',
-      description:
-        'Students pursuing their educational goals at Trinidad Municipal College.',
-      image: studentsImage,
-    },
-    {
-      id: 'faculty',
-      title: 'Faculty and Staff',
-      description:
-        'Faculty and staff supporting students throughout their academic journey.',
-      image: facultyImage,
-    },
-    {
-      id: 'classroom',
-      title: 'Learning Environment',
-      description:
-        'A learning environment designed to support academic development.',
-      image: classroomImage,
-    },
-    {
-      id: 'activities',
-      title: 'School Activities',
-      description:
-        'Academic, student, and community activities at the college.',
-      image: activitiesImage,
-    },
-    {
-      id: 'community',
-      title: 'Community Engagement',
-      description:
-        'Activities that connect the college with its surrounding community.',
-      image: communityImage,
-    },
-  ];
-
-  const features = [
+const features = [
     {
       icon: ClipboardCheck,
       title: 'Admission Management',
@@ -261,7 +261,7 @@ const About = () => {
     });
   };
 
-  const changeImage = (direction) => {
+  const changeImage = useCallback((direction) => {
     if (!selectedImage) {
       return;
     }
@@ -288,7 +288,7 @@ const About = () => {
       x: 0,
       y: 0,
     });
-  };
+  }, [selectedImage]);
 
   // ==========================================
   // KEYBOARD CONTROLS
@@ -344,7 +344,7 @@ const About = () => {
 
       document.body.style.overflow = '';
     };
-  }, [selectedImage, zoom]);
+  }, [selectedImage, changeImage]);
 
   // ==========================================
   // MOUSE DRAG / PAN
@@ -387,7 +387,7 @@ const About = () => {
           HERO
       ========================================== */}
 
-      <section className="relative overflow-hidden rounded-2xl bg-[#123B5D] shadow-sm">
+      <section className="ep-page-banner relative overflow-hidden rounded-2xl bg-[#123B5D] shadow-sm">
 
         <div className="absolute -top-24 -right-24 w-72 h-72 rounded-full bg-white/5" />
 

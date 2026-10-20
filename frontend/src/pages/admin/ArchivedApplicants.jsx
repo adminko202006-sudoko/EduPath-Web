@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Archive,
   Eye,
@@ -13,8 +14,10 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import api from '../../services/api';
-import { useAuth } from '../../context/AuthContext';
-import { useConfirmDialog, ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
+import { useAuth } from '../../context/useAuth';
+import { ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import { useConfirmDialog } from '../../components/ui/useConfirmDialog';
 
 const ArchivedApplicants = ({ confirm }) => {
   const { token } = useAuth();
@@ -25,7 +28,7 @@ const ArchivedApplicants = ({ confirm }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  const loadArchivedApplicants = async (showRefresh = false) => {
+  const loadArchivedApplicants = useCallback(async (showRefresh = false) => {
     try {
       setError('');
 
@@ -53,13 +56,18 @@ const ArchivedApplicants = ({ confirm }) => {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [token]);
+  useAutoRefresh(() => {
+    loadArchivedApplicants(true);
+  });
 
   useEffect(() => {
     if (token) {
-      loadArchivedApplicants();
+      queueMicrotask(() => {
+        loadArchivedApplicants();
+      });
     }
-  }, [token]);
+  }, [token, loadArchivedApplicants]);
 
   const formatName = (applicant) => {
     if (applicant.display_name) {
@@ -206,7 +214,7 @@ const ArchivedApplicants = ({ confirm }) => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
 
         {/* Hero */}
-        <div className="relative overflow-hidden rounded-2xl ep-brand-gradient shadow-lg p-6 sm:p-8 mb-6 animate-fade-up">
+        <div className="ep-page-banner relative overflow-hidden rounded-2xl ep-brand-gradient shadow-lg p-6 sm:p-8 mb-6 animate-fade-up">
           <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full bg-white/10 animate-float" />
           <div className="absolute -bottom-20 -left-12 w-40 h-40 rounded-full bg-white/5" />
           <div className="absolute top-1/2 right-1/3 w-20 h-20 rounded-full bg-white/5 blur-sm" />
@@ -259,7 +267,7 @@ const ArchivedApplicants = ({ confirm }) => {
 
         {/* Error */}
         {error && (
-          <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800/40 px-5 py-4 animate-fade-up">
+          <ErrorMessage message={error}><div className="mb-6 rounded-2xl border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800/40 px-5 py-4 animate-fade-up">
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 rounded-xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
                 <AlertCircle
@@ -278,7 +286,7 @@ const ArchivedApplicants = ({ confirm }) => {
                 </p>
               </div>
             </div>
-          </div>
+          </div></ErrorMessage>
         )}
 
         {/* Summary */}

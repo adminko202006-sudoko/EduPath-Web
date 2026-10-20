@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   UserRound,
   Mail,
@@ -14,9 +15,18 @@ import {
   AlertCircle,
   Loader2,
 } from 'lucide-react';
-import api from '../../services/api';
+import api, { getServerBaseUrl } from '../../services/api';
+import { useAuth } from '../../context/useAuth';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 const Profile = () => {
+  const { updateUser } = useAuth();
+  const editingRef = useRef(false);
+  const savingRef = useRef(false);
+  const [photo, setPhoto] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [failedPhoto, setFailedPhoto] = useState(null);
+  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
   const [profile, setProfile] = useState(null);
   const [form, setForm] = useState({
     first_name: '',
@@ -31,14 +41,17 @@ const Profile = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  const fetchProfile = async () => {
+  const fetchProfile = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      }
       setError('');
 
       const response = await api.get('/staff/profile');
       const data = response.data?.data;
 
+      if (editingRef.current || savingRef.current) return;
       setProfile(data);
 
       setForm({
@@ -58,9 +71,14 @@ const Profile = () => {
       setLoading(false);
     }
   };
+  useAutoRefresh(() => {
+    if (!editingRef.current && !savingRef.current) fetchProfile(true);
+  });
 
   useEffect(() => {
-    fetchProfile();
+    queueMicrotask(() => {
+      fetchProfile();
+    });
   }, []);
 
   const handleChange = (e) => {
@@ -83,10 +101,15 @@ const Profile = () => {
       email: profile?.user?.email || '',
     });
 
+    editingRef.current = true;
     setEditing(true);
   };
 
   const handleCancel = () => {
+    if (savingRef.current) return;
+    editingRef.current = false;
+    setPhoto(null);
+    setPreview(null);
     setEditing(false);
     setError('');
     setSuccess('');
@@ -101,22 +124,33 @@ const Profile = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (savingRef.current) return;
+    savingRef.current = true;
 
     try {
       setSaving(true);
       setError('');
       setSuccess('');
 
-      const response = await api.put('/staff/profile', {
-        first_name: form.first_name.trim(),
-        middle_name: form.middle_name.trim(),
-        last_name: form.last_name.trim(),
-        email: form.email.trim(),
-      });
+      const payload = { first_name: form.first_name.trim(), middle_name: form.middle_name.trim(), last_name: form.last_name.trim(), email: form.email.trim() };
+      let response;
+      if (photo) {
+        const body = new FormData();
+        body.append('_method', 'PUT');
+        Object.entries(payload).forEach(([key, value]) => body.append(key, value));
+        body.append('profile_photo', photo);
+        response = await api.post('/staff/profile', body);
+      } else {
+        response = await api.put('/staff/profile', payload);
+      }
 
       const updatedProfile = response.data?.data;
 
       setProfile(updatedProfile);
+      updateUser({ name: updatedProfile.user.name, email: updatedProfile.user.email, profile_photo_url: updatedProfile.user.profile_photo ? `${getServerBaseUrl()}/storage/${updatedProfile.user.profile_photo}` : null });
+      editingRef.current = false;
+      setPhoto(null);
+      setPreview(null);
 
       setForm({
         first_name: updatedProfile?.first_name || '',
@@ -152,6 +186,7 @@ const Profile = () => {
         );
       }
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -261,14 +296,14 @@ const Profile = () => {
     <div className="space-y-6 animate-fade-up">
 
       {/* Hero */}
-      <section className="ep-brand-gradient relative overflow-hidden rounded-3xl p-6 text-white shadow-xl sm:p-8">
+      <section className="ep-page-banner ep-brand-gradient relative overflow-hidden rounded-3xl p-6 text-white shadow-xl sm:p-8">
         <div className="absolute -right-16 -top-20 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
         <div className="absolute -bottom-24 left-1/3 h-56 w-56 rounded-full bg-teal-300/10 blur-3xl" />
 
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-5">
             <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-3xl bg-white/15 text-white shadow-lg ring-1 ring-white/20 backdrop-blur-sm">
-              <UserRound size={38} />
+              {(preview || profile.user?.profile_photo) && failedPhoto !== (preview || profile.user?.profile_photo) ? <img src={preview || `${getServerBaseUrl()}/storage/${profile.user.profile_photo}`} alt="Your profile" onError={() => setFailedPhoto(preview || profile.user?.profile_photo)} className="h-full w-full rounded-3xl object-cover" /> : <UserRound size={38} />}
             </div>
 
             <div>
@@ -328,13 +363,13 @@ const Profile = () => {
       )}
 
       {error && (
-        <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+        <ErrorMessage message={error}><div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
           <AlertCircle className="mt-0.5 shrink-0" size={20} />
           <div>
             <p className="font-semibold">Something went wrong</p>
             <p className="mt-1 text-sm">{error}</p>
           </div>
-        </div>
+        </div></ErrorMessage>
       )}
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -372,6 +407,20 @@ const Profile = () => {
           </div>
 
           <form onSubmit={handleSubmit} className="p-5 sm:p-6">
+            {editing && <div className="mb-6 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+              <label htmlFor="staff-profile-photo" className="mb-2 block text-sm font-semibold">Profile picture</label>
+              <input id="staff-profile-photo" type="file" accept="image/jpeg,image/png,image/webp" disabled={saving} onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 2 * 1024 * 1024) {
+                  setError('Choose a JPG, PNG, or WEBP image up to 2 MB.');
+                  event.target.value = '';
+                  return;
+                }
+                setError(''); setPhoto(file); setPreview(URL.createObjectURL(file));
+              }} className="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-[#123B5D] file:px-4 file:py-2 file:text-white" />
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">JPG, PNG, or WEBP, up to 2 MB. Save Changes to upload your picture.</p>
+            </div>}
             <div className="grid gap-5 sm:grid-cols-2">
 
               <div>

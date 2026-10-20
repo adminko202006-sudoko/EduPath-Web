@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import {
@@ -25,8 +26,9 @@ import {
   FileCheck,
 } from 'lucide-react';
 
-import { useAuth } from '../../context/AuthContext';
-import api from '../../services/api';
+import { useAuth } from '../../context/useAuth';
+import api, { getServerBaseUrl } from '../../services/api';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 const SkeletonBox = ({ className = '' }) => (
   <div
@@ -74,18 +76,21 @@ const StatCard = ({
   </div>
 );
 
-const ApplicantDetails = () => {
-  const { id } = useParams();
+const ApplicantDetails = ({ applicantId, onClose, onSavingChange }) => {
+  const { id: routeId } = useParams();
+  const id = applicantId ?? routeId;
   const navigate = useNavigate();
   const { token } = useAuth();
 
   const [applicant, setApplicant] = useState(null);
+  const [failedPhoto, setFailedPhoto] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
 
@@ -99,7 +104,7 @@ const ApplicantDetails = () => {
     address: '',
   });
 
-  const loadApplicant = async (isRefresh = false) => {
+  const loadApplicant = useCallback(async (isRefresh = false) => {
     try {
       if (!isRefresh) {
         setLoading(true);
@@ -155,15 +160,20 @@ const ApplicantDetails = () => {
         setRefreshing(false);
       }
     }
-  };
+  }, [id, token]);
+  useAutoRefresh(() => {
+    loadApplicant(true);
+  });
 
   useEffect(() => {
     if (!token || !id) {
       return;
     }
 
-    loadApplicant();
-  }, [token, id]);
+    queueMicrotask(() => {
+      loadApplicant();
+    });
+  }, [token, id, loadApplicant]);
 
   const formatName = () => {
     if (!applicant) {
@@ -247,6 +257,9 @@ const ApplicantDetails = () => {
 
   const handleSave = async (e) => {
     e.preventDefault();
+    if (savingRef.current) return;
+    savingRef.current = true;
+    onSavingChange?.(true);
 
     setSaving(true);
     setSaveError('');
@@ -321,8 +334,16 @@ const ApplicantDetails = () => {
         );
       }
     } finally {
+      savingRef.current = false;
+      onSavingChange?.(false);
       setSaving(false);
     }
+  };
+
+  const handleBack = () => {
+    if (savingRef.current) return;
+    if (onClose) onClose();
+    else navigate('/admin/applicants');
   };
 
   const getStatusConfig = (status) => {
@@ -387,7 +408,7 @@ const ApplicantDetails = () => {
       <div className="space-y-6 pb-8 page-transition">
 
         {/* Hero Skeleton */}
-        <div className="relative overflow-hidden rounded-2xl ep-brand-gradient shadow-lg">
+        <div className="ep-page-banner relative overflow-hidden rounded-2xl ep-brand-gradient shadow-lg">
           <div className="p-6 sm:p-8">
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
               <div className="flex items-center gap-4">
@@ -465,17 +486,15 @@ const ApplicantDetails = () => {
 
   if (error) {
     return (
-      <div className="space-y-6 page-transition">
+      <ErrorMessage message={error}><div className="space-y-6 page-transition">
 
         <button
           type="button"
-          onClick={() =>
-            navigate('/admin/applicants')
-          }
+          onClick={handleBack}
           className="inline-flex items-center gap-2 text-sm font-semibold text-[#123B5D] dark:text-blue-400 hover:text-[#0F3553] dark:hover:text-blue-300 transition-colors"
         >
           <ArrowLeft size={17} />
-          Back to Applicants
+          {onClose ? 'Close details' : 'Back to Applicants'}
         </button>
 
         <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-2xl p-5 shadow-sm">
@@ -509,7 +528,7 @@ const ApplicantDetails = () => {
             </div>
           </div>
         </div>
-      </div>
+      </div></ErrorMessage>
     );
   }
 
@@ -519,13 +538,11 @@ const ApplicantDetails = () => {
 
         <button
           type="button"
-          onClick={() =>
-            navigate('/admin/applicants')
-          }
+          onClick={handleBack}
           className="inline-flex items-center gap-2 text-sm font-semibold text-[#123B5D] dark:text-blue-400 hover:text-[#0F3553] dark:hover:text-blue-300"
         >
           <ArrowLeft size={17} />
-          Back to Applicants
+          {onClose ? 'Close details' : 'Back to Applicants'}
         </button>
 
         <div className="ep-card rounded-2xl p-12 text-center">
@@ -552,7 +569,7 @@ const ApplicantDetails = () => {
     <div className="space-y-6 pb-8 page-transition">
 
       {/* Hero */}
-      <div className="relative overflow-hidden rounded-2xl ep-brand-gradient shadow-lg">
+      <div className="ep-page-banner relative overflow-hidden rounded-2xl ep-brand-gradient shadow-lg">
 
         <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full bg-white/5 pointer-events-none" />
         <div className="absolute -bottom-24 -left-16 w-56 h-56 rounded-full bg-white/5 pointer-events-none" />
@@ -562,13 +579,11 @@ const ApplicantDetails = () => {
           <div className="mb-5">
             <button
               type="button"
-              onClick={() =>
-                navigate('/admin/applicants')
-              }
+              onClick={handleBack}
               className="inline-flex items-center gap-2 text-sm font-semibold text-blue-100 hover:text-white transition-colors"
             >
               <ArrowLeft size={17} />
-              Back to Applicants
+              {onClose ? 'Close details' : 'Back to Applicants'}
             </button>
           </div>
 
@@ -577,7 +592,9 @@ const ApplicantDetails = () => {
             <div className="flex items-center gap-4">
 
               <div className="w-16 h-16 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center text-white font-bold text-xl">
-                {getInitials()}
+              {applicant.profile_photo && failedPhoto !== applicant.profile_photo ? (
+                <img src={`${getServerBaseUrl()}/storage/${applicant.profile_photo}`} alt={`${formatName()} profile`} onError={() => setFailedPhoto(applicant.profile_photo)} className="h-full w-full rounded-2xl object-cover" />
+              ) : getInitials()}
               </div>
 
               <div>
@@ -725,7 +742,7 @@ const ApplicantDetails = () => {
           <div className="p-6">
 
             {saveError && (
-              <div className="mb-5 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl p-4">
+              <ErrorMessage message={saveError}><div className="mb-5 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl p-4">
                 <div className="flex items-start gap-3">
                   <AlertCircle
                     size={19}
@@ -736,7 +753,7 @@ const ApplicantDetails = () => {
                     {saveError}
                   </p>
                 </div>
-              </div>
+              </div></ErrorMessage>
             )}
 
             <form onSubmit={handleSave}>

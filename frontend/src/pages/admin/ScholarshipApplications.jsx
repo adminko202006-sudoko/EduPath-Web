@@ -1,4 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import ScholarshipDecisionPanel from '../../components/ScholarshipDecisionPanel';
+import EntranceExamReviewPanel from '../../components/EntranceExamReviewPanel';
+import { needsEntranceExamReview } from '../../utils/entranceExamReview';
 import {
   Search,
   GraduationCap,
@@ -19,8 +23,10 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import api from '../../services/api';
+import ApplicantApplicationGroups from '../../components/ApplicantApplicationGroups';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 import ModalPortal from '../../components/ui/ModalPortal';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 
 const SkeletonCard = () => (
   <div className="animate-pulse rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800">
@@ -53,6 +59,88 @@ const SkeletonTable = () => (
   </div>
 );
 
+const getApplicant = (application) => {
+  return (
+    application?.applicant ||
+    application?.admission_application?.applicant ||
+    application?.student ||
+    {}
+  );
+};
+
+const getUser = (application) => {
+  const applicant = getApplicant(application);
+
+  return applicant?.user || application?.user || {};
+};
+
+const getApplicantName = (application) => {
+  const applicant = getApplicant(application);
+  const user = getUser(application);
+
+  if (applicant?.first_name || applicant?.last_name) {
+    return [
+      applicant?.first_name,
+      applicant?.middle_name,
+      applicant?.last_name,
+    ]
+      .filter(Boolean)
+      .join(' ');
+  }
+
+  return (
+    user?.name ||
+    applicant?.name ||
+    application?.applicant_name ||
+    'Unknown Applicant'
+  );
+};
+
+const getApplicantEmail = (application) => {
+  const applicant = getApplicant(application);
+  const user = getUser(application);
+
+  return (
+    user?.email ||
+    applicant?.email ||
+    application?.applicant_email ||
+    'No email available'
+  );
+};
+
+const getScholarship = (application) => {
+  return application?.scholarship || {};
+};
+
+const getScholarshipName = (application) => {
+  const scholarship = getScholarship(application);
+
+  return (
+    scholarship?.name ||
+    scholarship?.title ||
+    application?.scholarship_name ||
+    'Scholarship'
+  );
+};
+
+const getProgramName = (application) => {
+  const applicant = getApplicant(application);
+  const admission = application?.admission_application || {};
+
+  return (
+    applicant?.academic_program?.name ||
+    admission?.academic_program?.name ||
+    applicant?.program?.name ||
+    application?.program?.name ||
+    application?.program_name ||
+    'Not specified'
+  );
+};
+
+const getStatus = (application) => {
+  return String(application?.status || 'pending').toLowerCase();
+};
+
 const AdminScholarshipApplications = () => {
   const { token } = useAuth();
 
@@ -74,13 +162,13 @@ const AdminScholarshipApplications = () => {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
-  const authConfig = {
+  const authConfig = useMemo(() => ({
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  };
+  }), [token]);
 
-  const fetchApplications = async (isRefresh = false) => {
+  const fetchApplications = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) {
         setRefreshing(true);
@@ -125,100 +213,23 @@ const AdminScholarshipApplications = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [authConfig]);
+  useAutoRefresh(() => {
+    fetchApplications(true);
+  });
 
   useEffect(() => {
     if (token) {
-      fetchApplications();
+      queueMicrotask(() => {
+        fetchApplications();
+      });
     }
-  }, [token]);
+  }, [token, fetchApplications]);
 
-  const getApplicant = (application) => {
-    return (
-      application?.applicant ||
-      application?.admission_application?.applicant ||
-      application?.student ||
-      {}
-    );
-  };
-
-  const getUser = (application) => {
-    const applicant = getApplicant(application);
-
-    return applicant?.user || application?.user || {};
-  };
-
-  const getApplicantName = (application) => {
-    const applicant = getApplicant(application);
-    const user = getUser(application);
-
-    if (applicant?.first_name || applicant?.last_name) {
-      return [
-        applicant?.first_name,
-        applicant?.middle_name,
-        applicant?.last_name,
-      ]
-        .filter(Boolean)
-        .join(' ');
-    }
-
-    return (
-      user?.name ||
-      applicant?.name ||
-      application?.applicant_name ||
-      'Unknown Applicant'
-    );
-  };
-
-  const getApplicantEmail = (application) => {
-    const applicant = getApplicant(application);
-    const user = getUser(application);
-
-    return (
-      user?.email ||
-      applicant?.email ||
-      application?.applicant_email ||
-      'No email available'
-    );
-  };
-
-  const getScholarship = (application) => {
-    return application?.scholarship || {};
-  };
-
-  const getScholarshipName = (application) => {
-    const scholarship = getScholarship(application);
-
-    return (
-      scholarship?.name ||
-      scholarship?.title ||
-      application?.scholarship_name ||
-      'Scholarship'
-    );
-  };
-
-  const getProgramName = (application) => {
-    const applicant = getApplicant(application);
-    const admission = application?.admission_application || {};
-
-    return (
-      applicant?.academic_program?.name ||
-      admission?.academic_program?.name ||
-      applicant?.program?.name ||
-      application?.program?.name ||
-      application?.program_name ||
-      'Not specified'
-    );
-  };
-
-  const getStatus = (application) => {
-    return String(application?.status || 'pending').toLowerCase();
-  };
-
-  const formatStatus = (status) => {
+const formatStatus = (status) => {
     switch (String(status).toLowerCase()) {
       case 'approved':
-        return 'Approved';
+        return 'Approved for eligibility';
       case 'rejected':
         return 'Rejected';
       case 'under_review':
@@ -404,7 +415,7 @@ const AdminScholarshipApplications = () => {
     <div className="min-h-screen bg-[#f4f7fa] px-4 py-6 text-slate-800 dark:bg-slate-950 dark:text-slate-100 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
         {/* Hero */}
-        <section className="ep-brand-gradient overflow-hidden rounded-2xl bg-[#123B5D] shadow-lg">
+        <section className="ep-page-banner ep-brand-gradient overflow-hidden rounded-2xl bg-[#123B5D] shadow-lg">
           <div className="relative px-6 py-8 sm:px-8">
             <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
             <div className="absolute -bottom-16 right-24 h-48 w-48 rounded-full bg-white/5 blur-3xl" />
@@ -449,7 +460,7 @@ const AdminScholarshipApplications = () => {
 
         {/* Error */}
         {error && !showModal && (
-          <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
+          <ErrorMessage message={error}><div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
             <AlertCircle className="mt-0.5 shrink-0" size={19} />
 
             <div className="flex-1">
@@ -464,7 +475,7 @@ const AdminScholarshipApplications = () => {
             >
               Retry
             </button>
-          </div>
+          </div></ErrorMessage>
         )}
 
         {/* Summary Cards */}
@@ -597,7 +608,7 @@ const AdminScholarshipApplications = () => {
                 <option value="all">All Statuses</option>
                 <option value="pending">Pending</option>
                 <option value="under_review">Under Review</option>
-                <option value="approved">Approved</option>
+                <option value="approved">Approved for eligibility</option>
                 <option value="rejected">Rejected</option>
               </select>
             </div>
@@ -652,6 +663,8 @@ const AdminScholarshipApplications = () => {
               </p>
             </div>
           ) : (
+            <ApplicantApplicationGroups applications={filteredApplications}>
+              {(groupApplications) => (
             <>
               {/* Desktop Table */}
               <div className="hidden overflow-x-auto md:block">
@@ -685,7 +698,7 @@ const AdminScholarshipApplications = () => {
                   </thead>
 
                   <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                    {filteredApplications.map((application) => {
+                    {groupApplications.map((application) => {
                       const status = getStatus(application);
 
                       return (
@@ -778,7 +791,7 @@ const AdminScholarshipApplications = () => {
 
               {/* Mobile Cards */}
               <div className="divide-y divide-slate-200 md:hidden dark:divide-slate-700">
-                {filteredApplications.map((application) => {
+                {groupApplications.map((application) => {
                   const status = getStatus(application);
 
                   return (
@@ -870,6 +883,8 @@ const AdminScholarshipApplications = () => {
                 })}
               </div>
             </>
+              )}
+            </ApplicantApplicationGroups>
           )}
         </section>
       </div>
@@ -990,7 +1005,22 @@ const AdminScholarshipApplications = () => {
                 </div>
               </div>
 
+              {selectedApplication.staff_recommendation && (
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/30">
+                  <p className="text-xs font-bold uppercase tracking-wide text-blue-700 dark:text-blue-300">Staff Recommendation</p>
+                  <p className="mt-1 font-semibold text-slate-900 dark:text-white">
+                    {{ recommended: 'Recommend approval', not_recommended: 'Do not recommend', needs_information: 'Needs more information' }[selectedApplication.staff_recommendation] || selectedApplication.staff_recommendation}
+                  </p>
+                  {selectedApplication.staff_recommendation_remarks && (
+                    <p className="mt-2 whitespace-pre-line text-sm text-slate-600 dark:text-slate-300">{selectedApplication.staff_recommendation_remarks}</p>
+                  )}
+                </div>
+              )}
+
               {/* Status */}
+              {needsEntranceExamReview(selectedApplication.scholarship) && (
+                <EntranceExamReviewPanel key={selectedApplication.id} application={selectedApplication} />
+              )}
               <div>
                 <label
                   htmlFor="application-status"
@@ -1008,7 +1038,7 @@ const AdminScholarshipApplications = () => {
                 >
                   <option value="pending">Pending</option>
                   <option value="under_review">Under Review</option>
-                  <option value="approved">Approved</option>
+                  <option value="approved">Approved for eligibility</option>
                   <option value="rejected">Rejected</option>
                 </select>
               </div>
@@ -1035,11 +1065,15 @@ const AdminScholarshipApplications = () => {
               </div>
 
               {/* Modal Error */}
+              <ScholarshipDecisionPanel key={selectedApplication.id} application={selectedApplication} onUpdated={updated => {
+                setSelectedApplication(current => ({ ...current, ...updated }));
+                setApplications(current => current.map(item => item.id === updated.id ? { ...item, ...updated } : item));
+              }} />
               {error && (
-                <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
+                <ErrorMessage message={error}><div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
                   <AlertCircle size={18} className="mt-0.5 shrink-0" />
                   <span>{error}</span>
-                </div>
+                </div></ErrorMessage>
               )}
 
               {/* Modal Success */}

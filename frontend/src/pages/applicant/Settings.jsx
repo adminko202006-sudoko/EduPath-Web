@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import useNotificationPreferences from '../../hooks/useNotificationPreferences';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
-import { useAuth } from '../../context/AuthContext';
-import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/useAuth';
+import { useTheme } from '../../context/useTheme';
+import useApplicantOnboarding from '../../onboarding/useApplicantOnboarding';
 
 import {
   User,
@@ -46,11 +49,15 @@ const PasswordToggle = ({ show, onClick }) => {
   );
 };
 
-const ToggleSwitch = ({ enabled, onClick }) => {
+const ToggleSwitch = ({ enabled, onClick, disabled }) => {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
+      role="switch"
+      aria-checked={enabled}
+      aria-label={enabled ? 'Disable notification' : 'Enable notification'}
       className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${
         enabled
           ? 'bg-[#123B5D]'
@@ -69,6 +76,7 @@ const ToggleSwitch = ({ enabled, onClick }) => {
 };
 
 const Settings = () => {
+  const tutorial = useApplicantOnboarding();
   const navigate = useNavigate();
   const { token, logout } = useAuth();
 
@@ -92,31 +100,10 @@ const Settings = () => {
   // =========================
   // NOTIFICATION STATES
   // =========================
-  const defaultNotifications = {
-    applicationStatus: true,
-    scholarshipUpdates: true,
-    entranceExamUpdates: true,
-    announcements: true,
-  };
-
   const [showNotificationPreferences, setShowNotificationPreferences] =
     useState(false);
 
-  const [notifications, setNotifications] = useState(() => {
-    try {
-      const saved = localStorage.getItem(
-        'edupath_notification_preferences'
-      );
-
-      return saved
-        ? { ...defaultNotifications, ...JSON.parse(saved) }
-        : defaultNotifications;
-    } catch {
-      return defaultNotifications;
-    }
-  });
-
-  const [notificationSaved, setNotificationSaved] = useState(false);
+  const { notifications, notificationSaved, setNotificationSaved, notificationError, notificationBusy, handleNotificationChange, handleSaveNotifications, reloadNotifications } = useNotificationPreferences();
 
   // =========================
   // APPEARANCE STATES (shared across all portals)
@@ -288,27 +275,6 @@ const Settings = () => {
   // =========================
   // NOTIFICATION HANDLERS
   // =========================
-  const handleNotificationChange = (key) => {
-    setNotifications((current) => ({
-      ...current,
-      [key]: !current[key],
-    }));
-
-    setNotificationSaved(false);
-  };
-
-  const handleSaveNotifications = () => {
-    localStorage.setItem(
-      'edupath_notification_preferences',
-      JSON.stringify(notifications)
-    );
-
-    setNotificationSaved(true);
-
-    setTimeout(() => {
-      setNotificationSaved(false);
-    }, 3000);
-  };
 
   // =========================
   // APPEARANCE HANDLER
@@ -332,7 +298,7 @@ const Settings = () => {
       {/* =========================
           PAGE HEADER
       ========================= */}
-      <div>
+      <div className="ep-page-banner rounded-2xl p-6 shadow-lg sm:p-8">
         <div className="flex items-center gap-3">
 
           <div className="w-11 h-11 rounded-xl bg-[#123B5D] flex items-center justify-center text-white">
@@ -340,7 +306,7 @@ const Settings = () => {
           </div>
 
           <div>
-            <h1 className="text-2xl font-bold text-[#123B5D]">
+            <h1 data-tutorial-target="applicant-finish-intro" className="text-2xl font-bold text-[#123B5D]">
               Settings
             </h1>
 
@@ -356,6 +322,17 @@ const Settings = () => {
       {/* =========================
           SETTINGS LIST
       ========================= */}
+      <section className="ep-card space-y-3 p-5 text-slate-700 dark:text-slate-200" aria-label="Applicant tutorial">
+        <h2 className="font-bold text-[#123B5D] dark:text-white">Your guided tour</h2>
+        <p className="text-sm">Explore the portal without submitting applications, uploading files, or starting examinations.</p>
+        {tutorial?.error && <ErrorMessage message={tutorial.error}><p role="alert" className="text-sm text-red-600 dark:text-red-300">{tutorial.error}</p></ErrorMessage>}
+        <div className="flex flex-wrap gap-3">
+          <button type="button" data-tutorial-target="applicant-tutorial-restart" disabled={tutorial?.busy || !tutorial?.available} onClick={tutorial?.start} className="min-h-11 rounded-xl bg-[#123B5D] px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{tutorial?.busy ? 'Saving…' : tutorial?.state ? 'Restart Tutorial' : 'Start Tutorial'}</button>
+          {tutorial?.state?.status === 'in_progress' && <button type="button" disabled={tutorial.busy || !tutorial.available} onClick={tutorial.resume} className="min-h-11 rounded-xl border border-slate-400 px-4 py-2 text-sm font-bold disabled:opacity-50">Resume Tutorial</button>}
+          {!tutorial?.available && <button type="button" onClick={tutorial?.refresh} className="min-h-11 rounded-xl border border-slate-400 px-4 py-2 text-sm font-bold">Check availability</button>}
+        </div>
+        {!tutorial?.available && <p className="text-sm">The tour is unavailable during an active exam or while account availability cannot be verified.</p>}
+      </section>
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
 
         {settingsItems.map((item, index) => {
@@ -454,10 +431,10 @@ const Settings = () => {
 
 
           {passwordError && (
-            <div className="mb-5 flex items-center gap-3 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-red-700 text-sm">
+            <ErrorMessage message={passwordError}><div className="mb-5 flex items-center gap-3 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-red-700 text-sm">
               <AlertCircle size={18} />
               {passwordError}
-            </div>
+            </div></ErrorMessage>
           )}
 
 
@@ -649,7 +626,10 @@ const Settings = () => {
           </div>
 
 
-          {notificationSaved && (
+          <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">Preferences are saved to your account and control push delivery. In-app records remain available.</p>
+            {notificationError && <ErrorMessage message={notificationError}><div role="alert" className="mb-4 text-sm text-red-700 dark:text-red-300">{notificationError} <button type="button" onClick={reloadNotifications} className="underline">Reload preferences</button></div></ErrorMessage>}
+            {notificationBusy && !notificationError && <p role="status" className="mb-4 text-sm">Loading or saving preferences…</p>}
+            {notificationSaved && (
             <div className="mb-5 flex items-center gap-3 rounded-xl bg-green-50 border border-green-200 px-4 py-3 text-green-700 text-sm">
               <CheckCircle2 size={18} />
               Notification preferences saved successfully.
@@ -714,6 +694,7 @@ const Settings = () => {
                   </div>
 
                   <ToggleSwitch
+                      disabled={notificationBusy}
                     enabled={notifications[item.key]}
                     onClick={() =>
                       handleNotificationChange(
@@ -734,6 +715,7 @@ const Settings = () => {
             <button
               type="button"
               onClick={handleSaveNotifications}
+                disabled={notificationBusy}
               className="flex items-center gap-2 bg-[#123B5D] hover:bg-[#0F3553] text-white px-5 py-3 rounded-xl font-semibold transition"
             >
               <Save size={17} />

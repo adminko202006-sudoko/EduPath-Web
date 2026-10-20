@@ -35,7 +35,7 @@ class AnnouncementController extends Controller
             'title' => 'required|string|max:255',
             'content' => 'required|string',
             'status' => 'required|in:draft,published',
-            'published_at' => 'nullable',
+            'published_at' => 'nullable|date',
         ]);
 
         $validated['published_at'] = $this->formatPublishedAt(
@@ -52,7 +52,7 @@ class AnnouncementController extends Controller
         return response()->json([
             'success' => true,
             'message' => $announcement->status === 'published'
-                ? 'Announcement published successfully.'
+                ? ($announcement->published_at?->isFuture() ? 'Announcement scheduled successfully.' : 'Announcement published successfully.')
                 : 'Announcement saved as draft.',
             'data' => $announcement,
         ], 201);
@@ -64,7 +64,7 @@ class AnnouncementController extends Controller
             'title' => 'sometimes|required|string|max:255',
             'content' => 'sometimes|required|string',
             'status' => 'sometimes|required|in:draft,published',
-            'published_at' => 'nullable',
+            'published_at' => 'nullable|date',
         ]);
 
         $status = $validated['status'] ?? $announcement->status;
@@ -107,13 +107,13 @@ class AnnouncementController extends Controller
         }
 
         try {
-            $parsed = Carbon::parse($publishedAt);
-            if ($parsed->year < 2020 || $parsed->year > 2037) {
-                return $status === 'published' ? now() : null;
-            }
-            return $parsed;
+            $parsed = Carbon::parse($publishedAt)->utc();
         } catch (\Exception $e) {
-            return $status === 'published' ? now() : null;
+            throw \Illuminate\Validation\ValidationException::withMessages(['published_at' => ['Enter a valid publication date and time.']]);
         }
+        if ($parsed->year < 2020 || $parsed->year > 2037) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['published_at' => ['The publication date must be between 2020 and 2037.']]);
+        }
+        return $parsed;
     }
 }

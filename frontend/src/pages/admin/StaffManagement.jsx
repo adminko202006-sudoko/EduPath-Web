@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { useConfirmDialog, ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import { ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import { useConfirmDialog } from '../../components/ui/useConfirmDialog';
 import ModalPortal from '../../components/ui/ModalPortal';
+import StaffProfileDialog from './StaffProfileDialog';
 
 import {
   UserPlus,
@@ -25,8 +28,10 @@ import {
   BriefcaseBusiness,
   ClipboardList,
   UserCog,
+  Eye,
 } from 'lucide-react';
 import api from '../../services/api';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 /* ============================================================================
    STAFF ROLES
@@ -37,7 +42,7 @@ const staffRoles = [
   'Scholarship Staff',
   'Registrar Staff',
   'Student Affairs Staff',
-  'Clinic Staff',
+  'Exam Staff',
 ];
 
 /* ============================================================================
@@ -59,6 +64,7 @@ const emptyForm = {
   manage_admissions: false,
   verify_documents: false,
   manage_exams: false,
+  review_online_exams: false,
   manage_scholarships: false,
   manage_announcements: false,
   send_notifications: false,
@@ -86,7 +92,12 @@ const permissionItems = [
     key: 'manage_exams',
     label: 'Manage Entrance Exams',
     description:
-      'Manage examination schedules and assignments.',
+      'View assigned entrance exams, update schedules, and cancel exams. Assignment and result release remain with Admin.',
+  },
+  {
+    key: 'review_online_exams',
+    label: 'Review Online Exams',
+    description: 'Monitor online attempts and record recommendations for assigned programs. Result release and retakes remain with Admin.',
   },
   {
     key: 'manage_scholarships',
@@ -130,6 +141,7 @@ const StaffManagement = ({ confirm }) => {
   const [search, setSearch] = useState('');
 
   const [showModal, setShowModal] = useState(false);
+  const [profileId, setProfileId] = useState(null);
   const [editingStaff, setEditingStaff] = useState(null);
 
   const [form, setForm] = useState({
@@ -138,6 +150,8 @@ const StaffManagement = ({ confirm }) => {
   });
 
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const staffRequestRef = useRef(0);
   const [deletingId, setDeletingId] = useState(null);
 
   const [error, setError] = useState('');
@@ -148,6 +162,7 @@ const StaffManagement = ({ confirm }) => {
   ========================================================================== */
 
   const fetchStaff = async (isRefresh = false) => {
+    const request = ++staffRequestRef.current;
     try {
       if (isRefresh) {
         setRefreshing(true);
@@ -158,9 +173,11 @@ const StaffManagement = ({ confirm }) => {
       setError('');
 
       const response = await api.get('/admin/staff');
+      if (request !== staffRequestRef.current) return;
 
       setStaff(response.data?.data || []);
     } catch (err) {
+      if (request !== staffRequestRef.current) return;
       console.error(
         'Unable to load staff members:',
         err
@@ -171,10 +188,12 @@ const StaffManagement = ({ confirm }) => {
           'Unable to load staff members.'
       );
     } finally {
+      if (request === staffRequestRef.current) {
       if (isRefresh) {
         setRefreshing(false);
       } else {
         setLoading(false);
+      }
       }
     }
   };
@@ -201,14 +220,25 @@ const StaffManagement = ({ confirm }) => {
       setProgramsLoading(false);
     }
   };
+  useAutoRefresh(() => {
+    // The save response already contains the complete member. Avoid a second
+    // list request from our own mutation's refresh event while saving.
+    if (savingRef.current) return;
+    fetchStaff(true);
+    fetchPrograms();
+  });
 
   /* ==========================================================================
      INITIAL LOAD
   ========================================================================== */
 
   useEffect(() => {
-    fetchStaff();
-    fetchPrograms();
+    queueMicrotask(() => {
+      fetchStaff();
+    });
+    queueMicrotask(() => {
+      fetchPrograms();
+    });
   }, []);
 
   /* ==========================================================================
@@ -336,6 +366,7 @@ const StaffManagement = ({ confirm }) => {
       manage_exams: Boolean(
         permissions.manage_exams
       ),
+      review_online_exams: Boolean(permissions.review_online_exams),
 
       manage_scholarships: Boolean(
         permissions.manage_scholarships
@@ -364,7 +395,7 @@ const StaffManagement = ({ confirm }) => {
   ========================================================================== */
 
   const closeModal = () => {
-    if (saving) {
+    if (savingRef.current) {
       return;
     }
 
@@ -455,12 +486,15 @@ const StaffManagement = ({ confirm }) => {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (savingRef.current) return;
+    savingRef.current = true;
 
     setSaving(true);
     setError('');
     setSuccess('');
 
     try {
+      let savedMember;
       if (editingStaff) {
         const payload = {
           name: form.name,
@@ -489,6 +523,7 @@ const StaffManagement = ({ confirm }) => {
 
           manage_exams:
             form.manage_exams,
+          review_online_exams: form.review_online_exams,
 
           manage_scholarships:
             form.manage_scholarships,
@@ -508,10 +543,11 @@ const StaffManagement = ({ confirm }) => {
             form.password;
         }
 
-        await api.put(
+        const response = await api.put(
           `/admin/staff/${editingStaff.id}`,
           payload
         );
+        savedMember = response.data?.data;
 
         setSuccess(
           'Staff account updated successfully.'
@@ -538,29 +574,33 @@ const StaffManagement = ({ confirm }) => {
           program_ids: form.program_ids,
         };
 
-        await api.post(
+        const response = await api.post(
           '/admin/staff',
           payload
         );
+        savedMember = response.data?.data;
 
         setSuccess(
           'Staff account created successfully.'
         );
       }
 
-      await fetchStaff();
-
-      setTimeout(() => {
-        setShowModal(false);
-        setEditingStaff(null);
-
-        setForm({
-          ...emptyForm,
-          program_ids: [],
-        });
-
-        setSuccess('');
-      }, 900);
+      if (savedMember?.id) {
+        // Ignore list reads started before this save; they may contain old data.
+        staffRequestRef.current++;
+        setRefreshing(false);
+        setStaff((current) => editingStaff
+          ? current.map((member) => member.id === savedMember.id ? savedMember : member)
+          : [savedMember, ...current.filter((member) => member.id !== savedMember.id)]
+        );
+      } else {
+        // Keep the current table mounted if an older server omits the member.
+        await fetchStaff(true);
+      }
+      if (!editingStaff) setSearch('');
+      setShowModal(false);
+      setEditingStaff(null);
+      setForm({ ...emptyForm, program_ids: [] });
     } catch (err) {
       console.error(
         'Unable to save staff account:',
@@ -588,6 +628,7 @@ const StaffManagement = ({ confirm }) => {
         );
       }
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -770,7 +811,7 @@ const StaffManagement = ({ confirm }) => {
           HERO
       ====================================================================== */}
 
-      <section className="ep-brand-gradient relative overflow-hidden rounded-2xl p-6 shadow-lg sm:p-8">
+      <section className="ep-page-banner ep-brand-gradient relative overflow-hidden rounded-2xl p-6 shadow-lg sm:p-8">
 
         <div className="absolute -right-20 -top-20 h-56 w-56 rounded-full bg-teal-300/10 blur-2xl" />
 
@@ -848,7 +889,7 @@ const StaffManagement = ({ confirm }) => {
       ====================================================================== */}
 
       {error && !showModal && (
-        <div className="animate-fade-up flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+        <ErrorMessage message={error}><div className="animate-fade-up flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
 
           <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
 
@@ -872,7 +913,7 @@ const StaffManagement = ({ confirm }) => {
             <X className="h-4 w-4" />
           </button>
 
-        </div>
+        </div></ErrorMessage>
       )}
 
       {success && !showModal && (
@@ -1247,7 +1288,11 @@ const StaffManagement = ({ confirm }) => {
 
                           <td className="px-6 py-5">
 
-                            <div className="flex justify-end gap-2">
+                            <div className="flex flex-wrap justify-end gap-2">
+
+                              <button type="button" onClick={() => setProfileId(member.id)} aria-label={`View profile of ${staffName}`} className="inline-flex items-center gap-1.5 rounded-lg bg-[#123B5D] px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#0F3553]">
+                                <Eye className="h-4 w-4" /> View Profile
+                              </button>
 
                               <button
                                 type="button"
@@ -1422,6 +1467,10 @@ const StaffManagement = ({ confirm }) => {
 
                       <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
 
+                        <button type="button" onClick={() => setProfileId(member.id)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#123B5D] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#0F3553]">
+                          <Eye className="h-4 w-4" /> View Profile
+                        </button>
+
                         <button
                           type="button"
                           onClick={() =>
@@ -1466,6 +1515,8 @@ const StaffManagement = ({ confirm }) => {
       {/* ======================================================================
           CREATE / EDIT MODAL
       ====================================================================== */}
+
+      {profileId !== null && <StaffProfileDialog key={profileId} staffId={profileId} onClose={() => setProfileId(null)} />}
 
       {showModal && (
         <ModalPortal
@@ -1552,7 +1603,7 @@ const StaffManagement = ({ confirm }) => {
                 {/* FORM ERROR */}
 
                 {error && (
-                  <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+                  <ErrorMessage message={error}><div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
 
                     <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
 
@@ -1568,7 +1619,7 @@ const StaffManagement = ({ confirm }) => {
 
                     </div>
 
-                  </div>
+                  </div></ErrorMessage>
                 )}
 
                 {success && (
@@ -1828,7 +1879,7 @@ const StaffManagement = ({ confirm }) => {
                 <FormSection
                   icon={GraduationCap}
                   title="Academic Programs Served"
-                  description="Select the academic programs this staff member is assigned to handle."
+                  description="Choose which applicants this staff member may handle. Permissions enable features; program assignments limit the records visible inside them. A staff role alone does not grant access."
                 >
 
                   <div className="mb-4 flex flex-col gap-3 rounded-xl border border-blue-100 bg-blue-50 p-4 dark:border-blue-900/40 dark:bg-blue-950/20 sm:flex-row sm:items-center sm:justify-between">

@@ -12,7 +12,7 @@ Route::get('/', function () {
 
 Route::get('/reset-password/{token}', function ($token) {
     return redirect(
-        'http://localhost:5173/reset-password/' .
+        rtrim(config('app.frontend_url'), '/') . '/reset-password/' .
         $token .
         '?email=' .
         urlencode(request('email'))

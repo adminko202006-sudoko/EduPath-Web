@@ -1,8 +1,14 @@
+import ErrorMessage from '../../components/ui/ErrorMessage';
 
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { useConfirmDialog, ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import { getApiBaseUrl } from '../../services/api';
+import { openPrivateDocument } from '../../services/documentFile';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
+import { notifyRefresh } from '../../services/refreshBus';
+import { ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import { useConfirmDialog } from '../../components/ui/useConfirmDialog';
 import ModalPortal from '../../components/ui/ModalPortal';
 import {
   FileText,
@@ -24,7 +30,24 @@ import {
   XCircle,
 } from 'lucide-react';
 
-const API_URL = 'http://127.0.0.1:8000/api';
+const API_URL = getApiBaseUrl();
+
+const getToken = () => {
+  return (
+    localStorage.getItem('token') ||
+    localStorage.getItem('auth_token') ||
+    localStorage.getItem('access_token')
+  );
+};
+
+const getHeaders = () => {
+  const token = getToken();
+
+  return {
+    Authorization: `Bearer ${token}`,
+    Accept: 'application/json',
+  };
+};
 
 function Documents({ confirm }) {
   const [documents, setDocuments] = useState([]);
@@ -44,24 +67,7 @@ function Documents({ confirm }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  const getToken = () => {
-    return (
-      localStorage.getItem('token') ||
-      localStorage.getItem('auth_token') ||
-      localStorage.getItem('access_token')
-    );
-  };
-
-  const getHeaders = () => {
-    const token = getToken();
-
-    return {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/json',
-    };
-  };
-
-  const loadDocuments = async (showRefresh = false) => {
+const loadDocuments = useCallback(async (showRefresh = false) => {
     try {
       if (showRefresh) {
         setRefreshing(true);
@@ -95,11 +101,16 @@ function Documents({ confirm }) {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
+  useAutoRefresh(() => {
+    loadDocuments(true);
+  });
 
   useEffect(() => {
-    loadDocuments();
-  }, []);
+    queueMicrotask(() => {
+      loadDocuments();
+    });
+  }, [loadDocuments]);
 
   const normalizeStatus = (status) => {
     const value = String(status || 'pending')
@@ -150,12 +161,21 @@ function Documents({ confirm }) {
     }
   };
 
-  const getFileUrl = (document) => {
+  const openDocument = async (document) => {
     if (!document?.file_path) {
-      return null;
+      setError('This document does not have an uploaded file.');
+      return;
     }
 
-    return `http://127.0.0.1:8000/storage/${document.file_path}`;
+    try {
+      // Streamed through the admin endpoint; the legacy /storage/ link had
+      // no authorization behind it.
+      await openPrivateDocument(
+        `/admin/documents/${document.id}/file`
+      );
+    } catch {
+      setError('Unable to open the document right now. Please try again.');
+    }
   };
 
   const getApplicantName = (document) => {
@@ -276,17 +296,6 @@ function Documents({ confirm }) {
     (document) => normalizeStatus(document.status) === 'rejected'
   ).length;
 
-  const openDocument = (document) => {
-    const url = getFileUrl(document);
-
-    if (!url) {
-      setError('This document does not have an uploaded file.');
-      return;
-    }
-
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
-
   const openReview = (document) => {
     setSelectedDocument(document);
     setReviewStatus(normalizeStatus(document.status));
@@ -353,6 +362,9 @@ function Documents({ confirm }) {
 
       setSuccess('Document review updated successfully.');
 
+      // Bypasses the shared api client, so notify the refresh bus manually.
+      notifyRefresh();
+
       setSelectedDocument(null);
       setReviewStatus('pending');
       setReviewRemarks('');
@@ -394,6 +406,9 @@ function Documents({ confirm }) {
       );
 
       setSuccess('Document deleted successfully.');
+
+      // Bypasses the shared api client, so notify the refresh bus manually.
+      notifyRefresh();
     } catch (err) {
       console.error('Failed to delete document:', err);
 
@@ -435,9 +450,9 @@ function Documents({ confirm }) {
     <div className="min-h-screen bg-[#f4f7fa] px-4 py-6 dark:bg-gray-950 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
         {/* Header */}
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="ep-page-banner rounded-2xl p-6 shadow-lg sm:p-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-[#123B5D] dark:text-blue-300">
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-blue-100">
               <FileCheck2 size={18} />
               <span>Document Management</span>
             </div>
@@ -468,7 +483,7 @@ function Documents({ confirm }) {
 
         {/* Messages */}
         {error && (
-          <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+          <ErrorMessage message={error}><div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
             <AlertCircle className="mt-0.5 shrink-0" size={18} />
 
             <div className="flex-1">
@@ -483,7 +498,7 @@ function Documents({ confirm }) {
             >
               <X size={17} />
             </button>
-          </div>
+          </div></ErrorMessage>
         )}
 
         {success && (
@@ -680,7 +695,7 @@ function Documents({ confirm }) {
             {filteredDocuments.map((document) => {
               const statusConfig = getStatusConfig(document.status);
               const StatusIcon = statusConfig.icon;
-              const fileUrl = getFileUrl(document);
+              const fileUrl = document?.file_path;
 
               return (
                 <div
@@ -921,7 +936,7 @@ function Documents({ confirm }) {
                   <button
                     type="button"
                     onClick={() => openDocument(selectedDocument)}
-                    disabled={!getFileUrl(selectedDocument)}
+                    disabled={!selectedDocument?.file_path}
                     className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
                   >
                     <Eye size={16} />

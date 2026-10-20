@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import {
@@ -14,8 +15,12 @@ import {
   Loader2,
 } from 'lucide-react';
 
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import api from '../../services/api';
+import { isOnlineExamNotification } from '../../services/examNotification';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
+import useConfirmDialog from '../../components/ui/useConfirmDialog';
+import { ConfirmDialogHost } from '../../components/ui/ConfirmDialogHost';
 
 const Notifications = () => {
   const { token } = useAuth();
@@ -26,8 +31,15 @@ const Notifications = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const { confirm, dialog } = useConfirmDialog();
+  const deleting = useRef(false);
+  const [deletingId, setDeletingId] = useState(null);
+  const requestSequence = useRef(0);
+  const invalidateRequests = useCallback(() => { requestSequence.current++; }, []);
 
-  const loadNotifications = async (showRefresh = false) => {
+  const loadNotifications = useCallback(async (showRefresh = false) => {
+    if (deleting.current) return;
+    const request = ++requestSequence.current;
     try {
       if (showRefresh) {
         setRefreshing(true);
@@ -44,11 +56,14 @@ const Notifications = () => {
       });
 
       const data = response.data;
+      if (request !== requestSequence.current) return;
+      if (!Array.isArray(data) && !Array.isArray(data?.data)) throw new Error('Invalid notification response');
 
       setNotifications(
         Array.isArray(data) ? data : data?.data || []
       );
     } catch (err) {
+      if (request !== requestSequence.current) return;
       console.error('Failed to load notifications:', err);
 
       setError(
@@ -56,18 +71,26 @@ const Notifications = () => {
           'Failed to load notifications.'
       );
     } finally {
+      if (request === requestSequence.current) {
       setLoading(false);
       setRefreshing(false);
+      }
     }
-  };
+  }, [token]);
+  useAutoRefresh(() => {
+    loadNotifications(true);
+  });
 
   useEffect(() => {
     if (!token) {
       return;
     }
 
-    loadNotifications();
-  }, [token]);
+    queueMicrotask(() => {
+      loadNotifications();
+    });
+    return invalidateRequests;
+  }, [token, loadNotifications, invalidateRequests]);
 
   useEffect(() => {
     if (!success) {
@@ -168,10 +191,25 @@ const Notifications = () => {
   };
 
   const deleteNotification = async (notificationId) => {
+    if (deleting.current) return;
+    const item = notifications.find((notification) => notification.id === notificationId);
+    if (!await confirm({
+      title: item?.announcement_id ? 'Delete announcement?' : 'Delete notification?',
+      message: item?.announcement_id
+        ? 'Remove this announcement from your account? The college announcement remains available to other applicants.'
+        : 'This notification will be removed from your list.',
+      confirmLabel: 'Delete', cancelLabel: 'Cancel',
+    })) return;
+    if (deleting.current) return;
+    deleting.current = true;
+    setDeletingId(notificationId);
+    invalidateRequests();
+    setLoading(false);
+    setRefreshing(false);
     try {
       setError('');
 
-      await api.delete(
+      const response = await api.delete(
         `/applicant/notifications/${notificationId}`,
         {
           headers: {
@@ -179,11 +217,13 @@ const Notifications = () => {
           },
         }
       );
+      if (response.data?.success !== true) throw new Error('Delete was not confirmed by the server.');
 
       setNotifications((current) =>
         current.filter(
           (notification) =>
-            notification.id !== notificationId
+            notification.id !== notificationId &&
+            (!item?.announcement_id || notification.announcement_id !== item.announcement_id)
         )
       );
 
@@ -202,6 +242,9 @@ const Notifications = () => {
         err.response?.data?.message ||
           'Failed to delete notification.'
       );
+    } finally {
+      deleting.current = false;
+      setDeletingId(null);
     }
   };
 
@@ -296,8 +339,9 @@ const Notifications = () => {
 
   return (
     <div className="max-w-6xl mx-auto page-transition pb-8">
+      <ConfirmDialogHost dialog={dialog} />
       {/* Hero */}
-      <div className="relative overflow-hidden bg-[#123B5D] rounded-2xl shadow-md mb-6">
+      <div className="ep-page-banner relative overflow-hidden bg-[#123B5D] rounded-2xl shadow-md mb-6">
         <div className="absolute -top-20 -right-20 w-56 h-56 rounded-full bg-white/5" />
         <div className="absolute -bottom-28 right-28 w-64 h-64 rounded-full bg-[#F4B400]/10" />
         <div className="absolute top-10 right-10 w-20 h-20 rounded-full border border-white/5" />
@@ -317,7 +361,7 @@ const Notifications = () => {
                   Stay Updated
                 </p>
 
-                <h1 className="text-2xl lg:text-3xl font-bold text-white mt-1">
+                <h1 data-tutorial-target="applicant-notifications-intro" className="text-2xl lg:text-3xl font-bold text-white mt-1">
                   Notifications
                 </h1>
 
@@ -381,7 +425,7 @@ const Notifications = () => {
 
       {/* Error Message */}
       {error && (
-        <div className="mb-6 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-2xl p-4 flex items-start gap-3 animate-fade-up">
+        <ErrorMessage message={error}><div className="mb-6 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-2xl p-4 flex items-start gap-3 animate-fade-up">
           <AlertCircle
             size={20}
             className="text-red-600 dark:text-red-400 mt-0.5 shrink-0"
@@ -395,6 +439,7 @@ const Notifications = () => {
             <p className="text-sm text-red-600 dark:text-red-400 mt-1">
               {error}
             </p>
+            <button type="button" onClick={() => loadNotifications(true)} disabled={refreshing} className="mt-2 font-semibold underline">Retry loading notifications</button>
           </div>
 
           <button
@@ -407,7 +452,7 @@ const Notifications = () => {
               ×
             </span>
           </button>
-        </div>
+        </div></ErrorMessage>
       )}
 
       {/* Statistics */}
@@ -480,7 +525,7 @@ const Notifications = () => {
       </div>
 
       {/* Notifications */}
-      {notifications.length === 0 ? (
+      {error && notifications.length === 0 ? null : notifications.length === 0 ? (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm p-10 lg:p-14 text-center animate-fade-up">
           <div className="w-20 h-20 mx-auto rounded-2xl bg-[#123B5D]/10 dark:bg-[#123B5D]/30 flex items-center justify-center mb-5">
             <Bell
@@ -648,7 +693,8 @@ const Notifications = () => {
                     </div>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-2 lg:pt-1">
+                    <div className="flex flex-wrap items-center gap-2 lg:pt-1">
+                      {isOnlineExamNotification(notification) && <button type="button" onClick={() => navigate('/applicant/online-scholarship-exam')} className="rounded-xl bg-[#123B5D] px-3.5 py-2 text-sm font-semibold text-white hover:bg-[#0B2941]">View Online Exam Schedule</button>}
                       {isUnread && (
                         <button
                           type="button"
@@ -673,8 +719,9 @@ const Notifications = () => {
                           )
                         }
                         className="w-10 h-10 flex items-center justify-center bg-red-50 dark:bg-red-950/30 hover:bg-red-600 text-red-600 dark:text-red-400 hover:text-white border border-red-100 dark:border-red-900/40 hover:border-red-600 rounded-xl transition-colors"
-                        title="Delete notification"
-                        aria-label="Delete notification"
+                        disabled={deletingId !== null}
+                        title={notification.announcement_id ? 'Delete announcement' : 'Delete notification'}
+                        aria-label={notification.announcement_id ? 'Delete announcement' : 'Delete notification'}
                       >
                         <Trash2 size={17} />
                       </button>

@@ -1,6 +1,7 @@
+import ErrorMessage from '../../components/ui/ErrorMessage';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 
 import {
   Mail,
@@ -581,7 +582,14 @@ const Login = () => {
           {/* ===================================================
               LEFT SIDE — BRANDING
           ==================================================== */}
-          <div className="edupath-branding relative lg:w-[46%] bg-[#123B5D] overflow-hidden">
+          <div
+            className="edupath-branding relative lg:w-[46%] bg-[#123B5D] overflow-hidden"
+            style={{
+              backgroundImage: "linear-gradient(180deg, rgba(5, 24, 42, 0.72), rgba(8, 36, 57, 0.88)), url('/TrinidadMunicipalCollege.png')",
+              backgroundSize: 'cover',
+              backgroundPosition: 'center 42%',
+            }}
+          >
 
             {/* -----------------------------------------------
                 FADING LIGHT — MAIN
@@ -1053,7 +1061,7 @@ const Login = () => {
                   ERROR MESSAGE
               ================================================== */}
               {error && (
-                <div className="mb-5 flex items-start gap-3 rounded-2xl bg-red-50 dark:bg-red-500/[0.08] border border-red-200 dark:border-red-500/20 px-4 py-3.5 text-sm text-red-700 dark:text-red-300 shadow-sm">
+                <ErrorMessage message={error}><div className="mb-5 flex items-start gap-3 rounded-2xl bg-red-50 dark:bg-red-500/[0.08] border border-red-200 dark:border-red-500/20 px-4 py-3.5 text-sm text-red-700 dark:text-red-300 shadow-sm">
 
                   <AlertCircle
                     size={19}
@@ -1064,7 +1072,7 @@ const Login = () => {
                     {error}
                   </p>
 
-                </div>
+                </div></ErrorMessage>
               )}
 
 
@@ -1187,8 +1195,7 @@ const Login = () => {
 
                   </label>
 
-                  {/* APPLICANT + ADMIN CAN RESET PASSWORD */}
-                  {selectedRole !== 'staff' && (
+                  {/* All existing account roles can recover their password. */}
                   <Link
                     to="/forgot-password"
                     onClick={handleForgotPassword}
@@ -1212,8 +1219,6 @@ const Login = () => {
                       ? 'Opening...'
                       : 'Forgot password?'}
                   </Link>
-                  )}
-
                 </div>
 
 

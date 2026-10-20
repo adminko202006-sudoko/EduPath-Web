@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react';
-import { useAuth } from '../../context/AuthContext';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useAuth } from '../../context/useAuth';
 import api from '../../services/api';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
+import { activeAdmissionForPeriod, selectAdmissionForPeriod } from '../../services/admissionApplication';
 
 import {
   FileText,
@@ -18,8 +21,20 @@ const AdmissionApplication = () => {
   const { token } = useAuth();
 
   const [programs, setPrograms] = useState([]);
-  const [application, setApplication] = useState(null);
+  const [applications, setApplications] = useState([]);
+  const [viewApplicationId, setViewApplicationId] = useState(null);
+  const [composing, setComposing] = useState(false);
   const [currentAdmissionPeriod, setCurrentAdmissionPeriod] = useState(null);
+  const submissionLock = useRef(false);
+  const application = applications.find((item) => String(item.id) === String(viewApplicationId))
+    || selectAdmissionForPeriod(applications, currentAdmissionPeriod?.id);
+  const activeApplication = activeAdmissionForPeriod(applications, currentAdmissionPeriod?.id);
+  const canStartNew = !!currentAdmissionPeriod && !activeApplication;
+  const newApplicationWarning = activeApplication?.status === 'approved'
+    ? 'Your admission application has already been approved. You cannot apply again for the same admission period.'
+    : activeApplication
+    ? 'You already have an application pending or under review for this admission period. Please wait for a decision or withdraw it before applying again.'
+    : 'There is currently no open admission period.';
 
   const [academicProgramId, setAcademicProgramId] = useState('');
   const [remarks, setRemarks] = useState('');
@@ -35,7 +50,7 @@ const AdmissionApplication = () => {
   // LOAD ADMISSION APPLICATION
   // ==========================================
 
-  const loadApplication = async () => {
+  const loadApplication = useCallback(async () => {
     try {
       const response = await api.get('/applicant/admissions', {
         headers: {
@@ -49,11 +64,7 @@ const AdmissionApplication = () => {
         ? data
         : data.data || [];
 
-      if (applications.length > 0) {
-        setApplication(applications[0]);
-      } else {
-        setApplication(null);
-      }
+      setApplications(applications);
     } catch (err) {
       console.error(
         'Failed to load admission application:',
@@ -65,13 +76,13 @@ const AdmissionApplication = () => {
           'Failed to load admission application.'
       );
     }
-  };
+  }, [token]);
 
   // ==========================================
   // LOAD PROGRAMS
   // ==========================================
 
-  const loadPrograms = async () => {
+  const loadPrograms = useCallback(async () => {
     try {
       const response = await api.get('/applicant/programs', {
         headers: {
@@ -97,13 +108,13 @@ const AdmissionApplication = () => {
           'Failed to load academic programs.'
       );
     }
-  };
+  }, [token]);
 
   // ==========================================
   // LOAD CURRENT ADMISSION PERIOD
   // ==========================================
 
-  const loadCurrentAdmissionPeriod = async () => {
+  const loadCurrentAdmissionPeriod = useCallback(async () => {
     try {
       setPeriodLoading(true);
 
@@ -133,7 +144,15 @@ const AdmissionApplication = () => {
     } finally {
       setPeriodLoading(false);
     }
-  };
+  }, [token]);
+
+  useAutoRefresh(() =>
+    Promise.all([
+      loadApplication(),
+      loadPrograms(),
+      loadCurrentAdmissionPeriod(),
+    ])
+  );
 
   // ==========================================
   // INITIAL LOAD
@@ -161,7 +180,7 @@ const AdmissionApplication = () => {
     };
 
     loadPage();
-  }, [token]);
+  }, [token, loadApplication, loadPrograms, loadCurrentAdmissionPeriod]);
 
   // ==========================================
   // SUBMIT ADMISSION APPLICATION
@@ -169,6 +188,7 @@ const AdmissionApplication = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submissionLock.current) return;
 
     setSubmitting(true);
     setError('');
@@ -191,6 +211,13 @@ const AdmissionApplication = () => {
       return;
     }
 
+    if (!canStartNew) {
+      setError('You already have an active or approved application for this admission period.');
+      setSubmitting(false);
+      return;
+    }
+    submissionLock.current = true;
+
     try {
       const response = await api.post(
         '/applicant/admissions',
@@ -210,7 +237,9 @@ const AdmissionApplication = () => {
         response.data.application ||
         response.data;
 
-      setApplication(newApplication);
+      setApplications((previous) => [newApplication, ...previous.filter((item) => item.id !== newApplication.id)]);
+      setViewApplicationId(newApplication.id);
+      setComposing(false);
 
       setMessage(
         response.data.message ||
@@ -238,6 +267,7 @@ const AdmissionApplication = () => {
         );
       }
     } finally {
+      submissionLock.current = false;
       setSubmitting(false);
     }
   };
@@ -314,6 +344,9 @@ const AdmissionApplication = () => {
           icon: <Clock3 size={15} />,
         };
 
+      case 'withdrawn':
+        return { label: 'Withdrawn', className: 'bg-gray-100 text-gray-700', icon: <XCircle size={15} /> };
+
       default:
         return {
           label: 'Pending',
@@ -361,7 +394,7 @@ const AdmissionApplication = () => {
   // EXISTING APPLICATION
   // ==========================================
 
-  if (application) {
+  if (application && !(composing && canStartNew)) {
     const status =
       application.status || 'pending';
 
@@ -371,8 +404,31 @@ const AdmissionApplication = () => {
     return (
       <div className="max-w-4xl mx-auto space-y-8">
 
+        <section className="ep-card flex flex-wrap items-end gap-4 p-4">
+          <label className="min-w-0 flex-1 text-sm font-semibold text-gray-700 dark:text-gray-200">Application history
+            <select className="mt-2 w-full rounded-xl border border-gray-300 bg-white p-3 dark:border-gray-600 dark:bg-gray-800" value={application.id} onChange={(e) => setViewApplicationId(e.target.value)}>
+              {applications.map((item) => <option key={item.id} value={item.id}>#{item.id} · {item.admission_period?.name || 'Admission'} · {item.status.replaceAll('_', ' ')}</option>)}
+            </select>
+          </label>
+          <button
+            type="button"
+            disabled={!canStartNew || periodLoading || submitting}
+            aria-describedby={!canStartNew ? 'new-admission-warning' : undefined}
+            className="rounded-xl bg-[#123B5D] px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => { if (!canStartNew || periodLoading || submitting) return; setComposing(true); setError(''); setMessage(''); }}
+          >
+            Apply New
+          </button>
+          {!canStartNew && (
+            <div id="new-admission-warning" role="status" className="flex w-full items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+              <Info size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
+              <p className="text-sm">{newApplicationWarning}</p>
+            </div>
+          )}
+        </section>
+
         {/* HEADER */}
-        <section>
+        <section className="ep-page-banner rounded-2xl p-6 shadow-lg sm:p-8">
           <div className="flex items-center gap-3 mb-3">
 
             <div className="w-11 h-11 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
@@ -383,7 +439,7 @@ const AdmissionApplication = () => {
             </div>
 
             <div>
-              <h1 className="text-2xl lg:text-3xl font-bold text-[#123B5D] dark:text-white">
+              <h1 data-tutorial-target="applicant-admission-intro" className="text-2xl lg:text-3xl font-bold text-[#123B5D] dark:text-white">
                 Admission Application
               </h1>
 
@@ -414,9 +470,9 @@ const AdmissionApplication = () => {
 
         {/* ERROR */}
         {error && (
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-xl">
+          <ErrorMessage message={error}><div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-xl">
             {error}
-          </div>
+          </div></ErrorMessage>
         )}
 
         {/* ADMISSION PERIOD */}
@@ -671,7 +727,9 @@ const AdmissionApplication = () => {
 
                 <p className="text-sm text-blue-700 dark:text-blue-300 mt-1 leading-relaxed">
 
-                  {status === 'approved'
+                  {status === 'withdrawn'
+                    ? 'This admission application was withdrawn. Its records and documents have been preserved.'
+                    : status === 'approved'
                     ? 'Congratulations! Your admission application has been approved.'
                     : status === 'rejected'
                     ? 'Your admission application was not approved. Please check any remarks or contact the school for more information.'
@@ -700,8 +758,10 @@ const AdmissionApplication = () => {
   return (
     <div className="max-w-4xl mx-auto space-y-8">
 
+      {application && <button type="button" className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-semibold dark:border-gray-600" onClick={() => setComposing(false)}>Back to application history</button>}
+
       {/* HEADER */}
-      <section>
+      <section className="ep-page-banner rounded-2xl p-6 shadow-lg sm:p-8">
 
         <div className="flex items-center gap-3 mb-3">
 
@@ -716,7 +776,7 @@ const AdmissionApplication = () => {
 
           <div>
 
-            <h1 className="text-2xl lg:text-3xl font-bold text-[#123B5D] dark:text-white">
+            <h1 data-tutorial-target="applicant-admission-intro" className="text-2xl lg:text-3xl font-bold text-[#123B5D] dark:text-white">
               Admission Application
             </h1>
 
@@ -733,9 +793,9 @@ const AdmissionApplication = () => {
 
       {/* ERROR */}
       {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-xl">
+        <ErrorMessage message={error}><div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-xl">
           {error}
-        </div>
+        </div></ErrorMessage>
       )}
 
       {/* MESSAGE */}

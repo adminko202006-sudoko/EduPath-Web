@@ -1,5 +1,6 @@
+import ErrorMessage from '../../components/ui/ErrorMessage';
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import {
   Mail,
@@ -15,8 +16,9 @@ import tmcLogo from '../../assets/tmcLogo.jpg';
 
 const ForgotPassword = () => {
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(location.state?.email || '');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -518,6 +520,9 @@ const ForgotPassword = () => {
                   EduPath account and we'll send you a verification
                   code to reset your password.
                 </p>
+                <p className="mt-3 text-xs leading-relaxed text-gray-500">
+                  Available for Applicant, Staff, and Administrator accounts. If you cannot access your registered email, contact the TMC administrator for identity verification. Staff account activation and permissions remain managed by Admin.
+                </p>
 
               </div>
 
@@ -545,7 +550,7 @@ const ForgotPassword = () => {
                   ERROR MESSAGE
               ================================================== */}
               {error && (
-                <div className="mb-5 flex items-start gap-3 rounded-2xl bg-red-50 border border-red-200 px-4 py-3.5 shadow-sm">
+                <ErrorMessage message={error}><div className="mb-5 flex items-start gap-3 rounded-2xl bg-red-50 border border-red-200 px-4 py-3.5 shadow-sm">
 
                   <AlertCircle
                     size={20}
@@ -556,7 +561,7 @@ const ForgotPassword = () => {
                     {error}
                   </p>
 
-                </div>
+                </div></ErrorMessage>
               )}
 
 

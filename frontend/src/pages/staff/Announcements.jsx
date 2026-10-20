@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import { showErrorDialog } from '../../services/errorDialogs';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Search,
   Megaphone,
@@ -19,9 +21,12 @@ import {
 } from 'lucide-react';
 
 import api from '../../services/api';
-import { useConfirmDialog, ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
+import { publicationTimeForInput, publicationTimeToUtc } from '../../services/publicationTime';
+import { ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import { useConfirmDialog } from '../../components/ui/useConfirmDialog';
 import ModalPortal from '../../components/ui/ModalPortal';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 
 const getStatusConfig = (status) => {
   if (status === 'published') {
@@ -92,7 +97,7 @@ const StaffAnnouncements = ({ confirm }) => {
     published_at: '',
   });
 
-  const fetchAnnouncements = async (isRefresh = false) => {
+  const fetchAnnouncements = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) {
         setRefreshing(true);
@@ -126,13 +131,18 @@ const StaffAnnouncements = ({ confirm }) => {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [token]);
+  useAutoRefresh(() => {
+    fetchAnnouncements(true);
+  });
 
   useEffect(() => {
     if (token) {
-      fetchAnnouncements();
+      queueMicrotask(() => {
+        fetchAnnouncements();
+      });
     }
-  }, [token]);
+  }, [token, fetchAnnouncements]);
 
   const resetForm = () => {
     setForm({
@@ -157,9 +167,7 @@ const StaffAnnouncements = ({ confirm }) => {
       title: announcement.title || '',
       content: announcement.content || '',
       status: announcement.status || 'draft',
-      published_at: announcement.published_at
-        ? announcement.published_at.substring(0, 16)
-        : '',
+      published_at: publicationTimeForInput(announcement.published_at),
     });
 
     setShowForm(true);
@@ -193,7 +201,7 @@ const StaffAnnouncements = ({ confirm }) => {
         title: form.title,
         content: form.content,
         status: form.status,
-        published_at: form.published_at || null,
+        published_at: publicationTimeToUtc(form.published_at),
       };
 
       let response;
@@ -244,7 +252,7 @@ const StaffAnnouncements = ({ confirm }) => {
         err
       );
 
-      alert(
+      showErrorDialog(
         err.response?.data?.message ||
           'Failed to save announcement.'
       );
@@ -291,7 +299,7 @@ const StaffAnnouncements = ({ confirm }) => {
         err
       );
 
-      alert(
+      showErrorDialog(
         err.response?.data?.message ||
           'Failed to delete announcement.'
       );
@@ -373,7 +381,7 @@ const StaffAnnouncements = ({ confirm }) => {
           HERO
       ===================================================== */}
       <section
-        className="
+        className="ep-page-banner
           relative
           overflow-hidden
           rounded-2xl
@@ -620,7 +628,7 @@ const StaffAnnouncements = ({ confirm }) => {
           ERROR
       ===================================================== */}
       {error && (
-        <div
+        <ErrorMessage message={error}><div
           className="
             ep-card
             border-red-200
@@ -645,7 +653,7 @@ const StaffAnnouncements = ({ confirm }) => {
               {error}
             </p>
           </div>
-        </div>
+        </div></ErrorMessage>
       )}
 
       {/* =====================================================

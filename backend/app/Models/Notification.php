@@ -9,6 +9,18 @@ class Notification extends Model
 {
     use HasFactory;
 
+    protected $appends = ['destination'];
+
+    public function getDestinationAttribute(): ?string
+    {
+        // Includes existing notifications: no data rewrite or enum change is required.
+        $content = strtolower($this->title . ' ' . $this->message);
+        if ($this->type === 'exam' && preg_match('/online (?:scholarship )?exam/', $content)) {
+            return 'online_exam';
+        }
+        return $this->type === 'exam' ? 'scheduled_exam' : null;
+    }
+
     protected $fillable = [
         'user_id',
         'title',
