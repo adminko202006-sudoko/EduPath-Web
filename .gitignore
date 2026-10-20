@@ -30,3 +30,19 @@ yarn-error.log
 /backend/storage/app/firebase-credentials*.json
 /backend/storage/app/edupath-backups/
 /backend/storage/app/private/
+/storage/free-demo/
+/storage/tools/
+/output/demo-frontend/
+
+# Source publication excludes generated dependencies, runtime data and backups.
+/output/
+/storage/
+/backend/vendor/
+/frontend/node_modules/
+/frontend/dist/
+/backend/bootstrap/cache/*.php
+*.bak
+*.backup
+*.sql
+*.jks
+*.keystore

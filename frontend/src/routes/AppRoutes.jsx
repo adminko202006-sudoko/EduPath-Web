@@ -135,7 +135,7 @@ const AppRoutes = () => {
 
       {/* ==================================================
           APPLICANT ROUTES
-          
+
           ApplicantLayout is mounted once for the entire
           applicant section.
           ================================================== */}
@@ -221,7 +221,7 @@ const AppRoutes = () => {
 
       {/* ==================================================
           ADMIN ROUTES
-          
+
           AdminLayout is mounted once for the entire
           admin section.
           ================================================== */}
@@ -323,14 +323,14 @@ const AppRoutes = () => {
         <Route
           path="/about"
           element={<About />}
-        />  
+        />
 
       </Route>
 
 
       {/* ==================================================
           STAFF ROUTES
-          
+
           StaffLayout is mounted once for the entire
           staff section.
           ================================================== */}
@@ -403,7 +403,7 @@ const AppRoutes = () => {
         <Route
           path="/about"
           element={<About />}
-        />  
+        />
 
       </Route>
 

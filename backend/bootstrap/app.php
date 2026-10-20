@@ -16,6 +16,12 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Only the opt-in demo process trusts the local cloudflared connector.
+        // Ordinary LAN/development and hosted deployments keep their existing policy.
+        if (env('EDUPATH_DEMO_MODE', false)) {
+            $middleware->trustProxies(at: ['127.0.0.1', '::1'], headers:
+                Request::HEADER_X_FORWARDED_FOR | Request::HEADER_X_FORWARDED_PROTO | Request::HEADER_X_FORWARDED_PORT);
+        }
         // Laravel's default guest redirect targets a named `login` route. This app
         // has no such route (the React SPA owns /login), so resolving it inside the
         // Authenticate middleware crashed unauthenticated API requests with a 500

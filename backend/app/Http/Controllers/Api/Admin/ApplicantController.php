@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 
 class ApplicantController extends Controller
 {
-    
+
     /**
      * Display a listing of applicants.
      */

@@ -2577,4 +2577,3 @@ const EntranceExamsWrapper = () => {
 };
 
 export default EntranceExamsWrapper;
-

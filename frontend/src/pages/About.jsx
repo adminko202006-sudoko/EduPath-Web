@@ -1200,4 +1200,3 @@ const features = [
 };
 
 export default About;
-

@@ -1495,4 +1495,3 @@ const AdmissionApplicationsWrapper = () => {
 };
 
 export default AdmissionApplicationsWrapper;
-

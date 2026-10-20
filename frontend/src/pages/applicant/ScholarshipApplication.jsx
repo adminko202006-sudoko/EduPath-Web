@@ -106,7 +106,7 @@ function Skeleton({ className = '' }) {
 
 
 export default function ScholarshipApplication() {
-  
+
   const { token } = useAuth();
 
   const [applications, setApplications] = useState([]);

@@ -681,7 +681,7 @@ const Login = () => {
                       alt="Trinidad Municipal College Logo"
                       className="w-full h-full object-contain rounded-full"
                     />
-                    
+
 
                   </div>
 
@@ -864,7 +864,7 @@ const Login = () => {
                   dark:hover:text-[#123B5D]
                   hover:border-[#123B5D]
                   dark:hover:border-[#F4B400]
-                  
+
                   hover:shadow-md
                   transition-colors
                   duration-200
@@ -879,7 +879,7 @@ const Login = () => {
                     duration-200
                     group-hover:rotate-12
                   "
-                  
+
                 />
 
                 <span>
@@ -891,7 +891,7 @@ const Login = () => {
                   className="
                     transition-transform
                     duration-200
-                    
+
                   "
                 />
               </Link>

@@ -72,13 +72,16 @@ try {
         collectTree($webRoot, 'backend/'.$directory, fn ($name) => (bool) preg_match('/\.(php|css|js)$/', $name), $web);
     }
     foreach (['artisan', 'composer.json', 'composer.lock', '.env.example', '.env.production.example',
-        'bootstrap/app.php', 'bootstrap/providers.php', 'public/index.php', 'public/.htaccess', 'phpunit.xml'] as $name) addSource($webRoot, 'backend/'.$name, $web);
+        'bootstrap/app.php', 'bootstrap/providers.php', 'public/index.php', 'public/.htaccess', 'phpunit.xml', 'server.php', 'start-lan.bat'] as $name) addSource($webRoot, 'backend/'.$name, $web);
     collectTree($webRoot, 'frontend/src', fn ($name) => !str_contains($name, 'frontend/src/src/') && (bool) preg_match('/\.(jsx?|css|svg|png|jpe?g|webp|gif)$/i', $name), $web);
     collectTree($webRoot, 'frontend/public', fn ($name) => (bool) preg_match('/\.(svg|png|jpe?g|webp|gif|ico)$/i', $name), $web);
     collectTree($webRoot, 'frontend/tests', fn ($name) => str_ends_with($name, '.mjs'), $web);
     foreach (['package.json', 'package-lock.json', 'vite.config.js', 'eslint.config.js', 'index.html', '.gitignore'] as $name) addSource($webRoot, 'frontend/'.$name, $web);
     collectTree($webRoot, 'deployment', fn ($name) => (bool) preg_match('/\.(md|example|ps1|php)$/i', $name), $web);
-    foreach (['AGENTS.md', '.gitignore'] as $name) addSource($webRoot, $name, $web);
+    collectTree($webRoot, 'docs', fn ($name) => str_ends_with($name, '.md'), $web);
+    foreach (glob($webRoot.'/*.md') as $file) addSource($webRoot, basename($file), $web);
+    foreach (glob($webRoot.'/backend/*.md') as $file) addSource($webRoot, 'backend/'.basename($file), $web);
+    foreach (['AGENTS.md', '.gitignore', 'commands', 'start-edupath.sh'] as $name) addSource($webRoot, $name, $web);
 
     $mobile = [];
     foreach (['lib', 'test'] as $directory) collectTree($mobileRoot, $directory, fn ($name) => str_ends_with($name, '.dart'), $mobile);

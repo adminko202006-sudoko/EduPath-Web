@@ -585,4 +585,3 @@ const Scholarships = () => {
 };
 
 export default Scholarships;
-

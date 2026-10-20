@@ -1,5 +1,9 @@
 # EduPath online deployment
 
+For the **no-billing school demo**, use [FREE-DEMO.md](FREE-DEMO.md) and
+`Start-FreeDemo.ps1`. The permanent hosting instructions below are optional and
+must not be used to provision paid services without separate authorization.
+
 This is a prepared release kit, not a running internet deployment. No hosting,
 domain, database transfer, public endpoint, or purchase was created. All
 `edupath.example` addresses below are placeholders. Keep using the existing

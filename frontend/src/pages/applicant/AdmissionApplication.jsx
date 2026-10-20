@@ -1106,4 +1106,3 @@ const AdmissionApplication = () => {
 };
 
 export default AdmissionApplication;
-
