@@ -1,0 +1,7 @@
+# Scholarship year levels
+
+New scholarship applications offer **Incoming Freshman**, **1st Year**, **2nd Year**, **3rd Year**, and **4th Year**. Incoming Freshman describes an applicant who has not yet started their first college year; 1st Year remains available for current first-year students. Graduate / Post-graduate is no longer offered or accepted for new structured submissions. This change does not override scholarship-specific eligibility or approved-admission prerequisites.
+
+Updated the active web `frontend/src/components/ScholarshipApplyDialog.jsx`, mobile `lib/features/scholarships/widgets/scholarship_apply_modal.dart` in `C:\Users\oseas\StudioProjects\edupath_mobile`, and backend validation in `backend/app/Http/Controllers/Api/Applicant/ScholarshipController.php`. No selection is prefilled. Existing stored year levels remain readable and unchanged; no migrations or production data edits were performed.
+
+Verification: `ScholarshipApplicationFormTest` passed 11 tests / 80 assertions, including new freshman submission, rejection of new graduate submissions, preservation of historical answers, eligibility, attachment access, and validation. Mobile scholarship form/submission tests passed 11 tests, including review persistence and widths 320/360/390. Flutter analysis found no issues; targeted ESLint and the web production build passed. Regression fixtures now select Incoming Freshman.

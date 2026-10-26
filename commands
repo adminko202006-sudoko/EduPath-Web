@@ -1,0 +1,73 @@
+ -------------------------- -------------------------- --------------------------
+
+cd C:\Users\oseas\StudioProjects\edupath_mobile  
+flutter run
+
+cd C:\xampp\htdocs\G5_Edupath\backend
+
+cd C:\xampp\htdocs\G5_Edupath\frontend
+
+ -------------------------- -------------------------- --------------------------
+ php artisan serve --host=0.0.0.0 --port=8000
+ php artisan tinker  
+ Test-NetConnection 192.168.1.6 -Port 8000
+                                
+ -------------------------- -------------------------- --------------------------
+ npm run dev -- --host 0.0.0.0
+ npm run build  
+
+ -------------------------- -------------------------- --------------------------
+ flutter run
+ ipconfig
+ flutter devices
+ //$adbPath devices 
+
+Archie Infinix 10.81.248.213
+
+ $adbPath = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" 
+>>    
+>> & $adbPath kill-server   
+>> & $adbPath start-server   
+>> & $adbPath devices -l   
+
+ -------------------------- -------------------------- --------------------------
+
+Open Codex and sign in.
+Click the Codex icon in the sidebar and follow the sign-in prompts.
+ If the icon is missing, press Ctrl + Shift + P and run
+
+ Codex: Open Codex Sidebar
+
+
+ -------------------------- -------------------------- --------------------------
+ 
+PowerShell
+
+
+cd C:\xampp\htdocs\G5_Edupath
+& "C:\Program Files\Git\bin\bash.exe" --login -i
+bash ./start-edupath.sh
+
+export PATH="/c/xampp/php:$PATH"
+bash ./start-edupath.sh
+
+
+------------cloudflare--------------------------------------------------------
+
+.\deployment\Start-FreeDemo.ps1
+.\deployment\Start-FreeDemo.ps1
+------pang run------ -------------------------- -------------------------- --------------------------
+
+& "C:\Program Files\Git\bin\bash.exe" --login -i
+bash ./start-edupath.sh
+
+------pang run------ -------------------------- ----------------------------------------------------
+
+
+
+can we make the user receive a notification if there new upcomming scholarship and new schedule for entrance examination.
+
+for our Admission Requirements can you have a research about what really the requirements we need to upload? for this kind of sytem. and also for admin side For it's Documents page wanted it to look clean si for every applicant submitted their requirements just make a dropdown for every applicant to view there summitted requirements.
+
+
+ -----------------------------------------------------------------------------     
