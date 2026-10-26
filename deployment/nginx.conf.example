@@ -1,0 +1,50 @@
+# Ubuntu + PHP 8.3 FPM, one HTTPS origin for React and Laravel.
+# Replace edupath.example and certificate paths after obtaining your domain/TLS.
+server {
+    listen 80;
+    server_name edupath.example;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name edupath.example;
+    ssl_certificate /etc/letsencrypt/live/edupath.example/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/edupath.example/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    root /var/www/edupath/frontend/dist;
+    index index.html;
+    charset utf-8;
+    client_max_body_size 12m;
+
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options SAMEORIGIN always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+
+    # Never make legacy applicant documents available through public storage.
+    location = /storage/documents { return 403; }
+    location ^~ /storage/documents/ { return 403; }
+    location ~ /\. { deny all; }
+    location ~* \.(?:php|env|sql|bak|log|key|pem)$ { return 404; }
+
+    # Only public assets, e.g. profile photos and downloadable blank forms.
+    location /storage/ {
+        alias /var/www/edupath/backend/storage/app/public/;
+        autoindex off;
+    }
+
+    # Authorization headers and the original URI must reach Laravel unchanged.
+    location ~ ^/(?:api(?:/|$)|sanctum(?:/|$)|up$) {
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME /var/www/edupath/backend/public/index.php;
+        fastcgi_param DOCUMENT_ROOT /var/www/edupath/backend/public;
+        fastcgi_param HTTP_AUTHORIZATION $http_authorization;
+        fastcgi_param HTTPS on;
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+        fastcgi_hide_header X-Powered-By;
+        fastcgi_read_timeout 60s;
+    }
+
+    location /assets/ { try_files $uri =404; }
+    location / { try_files $uri $uri/ /index.html; }
+}

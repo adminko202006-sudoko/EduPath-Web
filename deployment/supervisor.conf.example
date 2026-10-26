@@ -1,0 +1,13 @@
+[program:edupath-queue]
+directory=/var/www/edupath/backend
+command=/usr/bin/php artisan queue:work --sleep=3 --tries=3 --timeout=60 --max-time=3600
+user=www-data
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+stopwaitsecs=75
+redirect_stderr=true
+stdout_logfile=/var/www/edupath/backend/storage/logs/queue-worker.log
+stdout_logfile_maxbytes=10MB
+stdout_logfile_backups=3

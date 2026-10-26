@@ -1,0 +1,33 @@
+EDUPATH - ONE-FILE WEB STARTUP
+
+Double-click Start-EduPath.cmd in C:\system-root\G5_Edupath.
+Or run from PowerShell:
+
+    cd C:\system-root\G5_Edupath
+    .\Start-EduPath.cmd
+
+This builds the React frontend, serves it with the Laravel backend, starts
+Cloudflare, and starts the notification queue worker and scheduler.
+There is no need to run the frontend, backend, and Cloudflare separately.
+
+Open the printed Web link in your browser.
+Copy the printed Mobile API link (ending in /api) into the mobile app's
+Server Settings, then select Test & Save.
+
+Keep MySQL Server, the startup window, and your internet connection running.
+Press Ctrl+C in the startup window to stop its services.
+Cloudflare gives a new URL each time; update the phone's Server Settings.
+If already running, the launcher prints the existing connection details.
+
+Optional commands:
+    .\Start-EduPath.cmd -Port 8090
+    .\Start-EduPath.cmd -SkipBuild
+
+First-time Cloudflare setup, if the client is missing:
+    .\deployment\Install-Cloudflared.ps1
+
+MOBILE DEVELOPMENT
+    cd C:\system-root\edupath_mobile
+    flutter run
+
+See deployment\FREE-DEMO.md for setup and troubleshooting.

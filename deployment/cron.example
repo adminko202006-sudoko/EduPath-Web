@@ -1,0 +1,3 @@
+# Install under the application's service user (e.g. www-data), not root.
+# Notification dispatch and scheduled announcements need the scheduler.
+* * * * * cd /var/www/edupath/backend && /usr/bin/php artisan schedule:run >> /var/www/edupath/backend/storage/logs/scheduler.log 2>&1
