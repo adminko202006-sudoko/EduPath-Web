@@ -7,11 +7,15 @@ use App\Models\User;
 use App\Models\Applicant;
 use App\Models\PasswordResetOtp;
 use App\Notifications\PasswordResetOtpNotification;
+use App\Notifications\PasswordChangedNotification;
+use App\Rules\UniqueAccountEmail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Validation\Rule;
 
 class AuthController extends Controller
 {
@@ -20,17 +24,54 @@ class AuthController extends Controller
      */
     public function register(Request $request)
     {
+        $requiresOldStudentDetails = $request->has('registration_details')
+            && $request->input('student_type') === 'old';
         $validated = $request->validate([
             'first_name' => 'required|string|max:255',
             'middle_name' => 'nullable|string|max:255',
             'last_name' => 'required|string|max:255',
-            'birth_date' => 'required|date',
+            'birth_date' => 'required|date|before_or_equal:today',
             'gender' => 'required|string|in:Male,Female,Other',
             'phone' => 'required|string|max:30',
-            'address' => 'required|string|max:500',
-            'email' => 'required|email|max:255|unique:users,email',
+            'address' => 'nullable|string|max:500',
+            'address_components' => 'required|array:country_code,province_id,city_id,province,city,street',
+            'address_components.country_code' => 'required|in:PH',
+            'address_components.province_id' => 'nullable|string|max:20',
+            'address_components.city_id' => 'nullable|string|max:20',
+            'address_components.province' => 'nullable|string|max:150',
+            'address_components.city' => 'nullable|string|max:150',
+            'address_components.street' => 'required_with:address_components|string|max:200',
+            'email' => ['bail', 'required', 'email', 'max:255', new UniqueAccountEmail()],
             'password' => 'required|string|min:8|confirmed',
+            // Optional for existing web clients; complete when submitted by mobile.
+            'registration_details' => 'sometimes|required|array:course_code,year_level,has_existing_scholarship,existing_scholarship_name',
+            'registration_details.course_code' => [
+                'exclude_unless:student_type,old', Rule::requiredIf($requiresOldStudentDetails),
+                'nullable', Rule::in(['BSIT', 'BSOA', 'BSCrim', 'BSPolSci', 'CAS', 'BSED']),
+            ],
+            'registration_details.year_level' => [
+                'exclude_unless:student_type,old', Rule::requiredIf($requiresOldStudentDetails),
+                'nullable', 'integer', 'between:1,4',
+            ],
+            'registration_details.has_existing_scholarship' => 'required_with:registration_details|boolean',
+            'registration_details.existing_scholarship_name' => [
+                Rule::requiredIf($request->boolean('registration_details.has_existing_scholarship')),
+                'nullable', 'string', 'max:255',
+            ],
         ]);
+
+        if (isset($validated['registration_details'])) {
+            $details = &$validated['registration_details'];
+            $details['has_existing_scholarship'] = (bool) $details['has_existing_scholarship'];
+            $details['existing_scholarship_name'] = $details['has_existing_scholarship']
+                ? trim($details['existing_scholarship_name']) : null;
+            if (isset($details['year_level'])) $details['year_level'] = (int) $details['year_level'];
+            unset($details);
+        }
+
+        if (isset($validated['address_components'])) {
+            $validated['address'] = app(\App\Services\LocationCatalog::class)->address($validated['address_components']);
+        }
 
         $fullName = implode(' ', array_filter([
             $validated['first_name'],
@@ -38,32 +79,54 @@ class AuthController extends Controller
             $validated['last_name'],
         ]));
 
-        $user = User::create([
-            'name' => $fullName,
-            'email' => $validated['email'],
-            'password' => $validated['password'],
-            'role' => 'applicant',
-        ]);
+        if (mb_strlen($fullName) > 255) {
+            throw ValidationException::withMessages([
+                'first_name' => ['Your combined first, middle and last name must not exceed 255 characters.'],
+            ]);
+        }
 
-        Applicant::create([
-            'user_id' => $user->id,
-            'first_name' => $validated['first_name'],
-            'middle_name' => $validated['middle_name'] ?? null,
-            'last_name' => $validated['last_name'],
-            'birth_date' => $validated['birth_date'],
-            'gender' => $validated['gender'],
-            'phone' => $validated['phone'],
-            'address' => $validated['address'],
-        ]);
+        $identities = app(\App\Services\StudentVerificationService::class);
+        $identity = $identities->validate($request);
+        $schoolIdPath = $request->file('school_id')->store('student-identities', 'local');
+        abort_unless($schoolIdPath, 503, 'Your school ID could not be stored. Please try again.');
+        try {
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($validated, $fullName, $identities, $identity, $schoolIdPath) {
+            $user = User::create([
+                'name' => $fullName,
+                'email' => $validated['email'],
+                'password' => $validated['password'],
+                'role' => 'applicant',
+            ]);
 
-        $token = $user->createToken('edupath-token')->plainTextToken;
+            $applicant = Applicant::create([
+                'user_id' => $user->id,
+                'first_name' => $validated['first_name'],
+                'middle_name' => $validated['middle_name'] ?? null,
+                'last_name' => $validated['last_name'],
+                'birth_date' => $validated['birth_date'],
+                'gender' => $validated['gender'],
+                'phone' => $validated['phone'],
+                'address' => $validated['address'],
+                // Self-reported information does not confirm a program or award.
+                ...(isset($validated['registration_details'])
+                    ? ['registration_details' => $validated['registration_details']] : []),
+            ]);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Registration successful.',
-            'user' => $user->load('applicant'),
-            'token' => $token,
-        ], 201);
+            $identities->submit($applicant, $identity, $schoolIdPath, $user);
+            \App\Models\UserOnboardingState::enrollNewApplicant($user);
+            $token = $user->createToken('edupath-token')->plainTextToken;
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Account created. Verify your email and wait for administrator identity review before applying.',
+                'user' => $user->load('applicant'),
+                'token' => $token,
+            ], 201);
+        });
+        } catch (\Throwable $error) {
+            Storage::disk('local')->delete($schoolIdPath);
+            throw $error;
+        }
     }
 
     /**
@@ -128,6 +191,13 @@ class AuthController extends Controller
             'applicant',
         ]);
 
+        if ($user->role === 'admin') {
+            $user->setAttribute(
+                'profile_photo_url',
+                $user->profile_photo ? Storage::disk('public')->url($user->profile_photo) : null
+            );
+        }
+
         /*
         |--------------------------------------------------------------------------
         | Create authentication token.
@@ -174,8 +244,8 @@ class AuthController extends Controller
     /**
      * Send password reset OTP.
      *
-     * Only applicants and admins can use self-service
-     * password recovery. Staff accounts are managed by admins.
+     * Existing applicants, administrators and staff can recover their password.
+     * Recovery never changes roles, staff permissions or activation status.
      */
     public function forgotPassword(Request $request)
     {
@@ -185,7 +255,7 @@ class AuthController extends Controller
 
         $email = strtolower(trim($validated['email']));
 
-        $user = User::where('email', $email)->first();
+        $user = User::whereRaw('LOWER(TRIM(email)) = ?', [$email])->first();
 
         /*
         |--------------------------------------------------------------------------
@@ -194,7 +264,7 @@ class AuthController extends Controller
         */
         if (
             !$user ||
-            !in_array($user->role, ['applicant', 'admin'], true)
+            !in_array($user->role, ['applicant', 'admin', 'staff'], true)
         ) {
             return response()->json([
                 'success' => true,
@@ -202,42 +272,27 @@ class AuthController extends Controller
             ]);
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Delete previous OTPs for this user.
-        |--------------------------------------------------------------------------
-        */
-        PasswordResetOtp::where('user_id', $user->id)->delete();
-
-        /*
-        |--------------------------------------------------------------------------
-        | Generate a secure 6-digit OTP.
-        |--------------------------------------------------------------------------
-        */
+        // Resends and verification/reset serialize on the same account lock.
         $otp = (string) random_int(100000, 999999);
+        \Illuminate\Support\Facades\DB::transaction(function () use ($user, $email, $otp) {
+            $user = User::whereKey($user->id)->lockForUpdate()->firstOrFail();
+            if (strtolower(trim($user->email)) !== $email || !in_array($user->role, ['applicant', 'admin', 'staff'], true)) return;
+            PasswordResetOtp::where('user_id', $user->id)->delete();
 
-        /*
-        |--------------------------------------------------------------------------
-        | Store only the hashed OTP.
-        |--------------------------------------------------------------------------
-        */
-        PasswordResetOtp::create([
-            'user_id' => $user->id,
-            'email' => $email,
-            'otp_hash' => Hash::make($otp),
-            'expires_at' => now()->addMinutes(10),
-            'attempts' => 0,
-            'verified_at' => null,
-        ]);
 
-        /*
-        |--------------------------------------------------------------------------
-        | Send the OTP to the user's email.
-        |--------------------------------------------------------------------------
-        */
-        $user->notify(
-            new PasswordResetOtpNotification($otp)
-        );
+            PasswordResetOtp::create([
+                'user_id' => $user->id,
+                'email' => $email,
+                'otp_hash' => Hash::make($otp),
+                'expires_at' => now()->addMinutes(10),
+                'attempts' => 0,
+                'verified_at' => null,
+            ]);
+
+            // Preserve the previous credential if the mail transport fails.
+            // No successful response is returned for a failed delivery request.
+            $user->notify(new PasswordResetOtpNotification($otp));
+        });
 
         return response()->json([
             'success' => true,
@@ -250,208 +305,44 @@ class AuthController extends Controller
      */
     public function verifyOtp(Request $request)
     {
-        $validated = $request->validate([
-            'email' => 'required|email',
-            'otp' => 'required|string|size:6',
-        ]);
-
+        $validated = $request->validate(['email' => 'required|email', 'otp' => 'required|digits:6']);
         $email = strtolower(trim($validated['email']));
-
-        $user = User::where('email', $email)->first();
-
-        /*
-        |--------------------------------------------------------------------------
-        | Only applicants and admins can verify password reset OTPs.
-        |--------------------------------------------------------------------------
-        */
-        if (
-            !$user ||
-            !in_array($user->role, ['applicant', 'admin'], true)
-        ) {
-            throw ValidationException::withMessages([
-                'otp' => ['The verification code is invalid or expired.'],
-            ]);
-        }
-
-        $otpRecord = PasswordResetOtp::where('user_id', $user->id)
-            ->where('email', $email)
-            ->latest()
-            ->first();
-
-        /*
-        |--------------------------------------------------------------------------
-        | OTP does not exist.
-        |--------------------------------------------------------------------------
-        */
-        if (!$otpRecord) {
-            throw ValidationException::withMessages([
-                'otp' => ['The verification code is invalid or expired.'],
-            ]);
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | OTP already verified.
-        |--------------------------------------------------------------------------
-        */
-        if ($otpRecord->verified_at) {
-            throw ValidationException::withMessages([
-                'otp' => ['This verification code has already been used.'],
-            ]);
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | OTP expired.
-        |--------------------------------------------------------------------------
-        */
-        if ($otpRecord->expires_at->isPast()) {
-            $otpRecord->delete();
-
-            throw ValidationException::withMessages([
-                'otp' => ['The verification code has expired. Please request a new code.'],
-            ]);
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Maximum verification attempts.
-        |--------------------------------------------------------------------------
-        */
-        if ($otpRecord->attempts >= 5) {
-            $otpRecord->delete();
-
-            throw ValidationException::withMessages([
-                'otp' => ['Too many incorrect attempts. Please request a new code.'],
-            ]);
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Check OTP.
-        |--------------------------------------------------------------------------
-        */
-        if (!Hash::check($validated['otp'], $otpRecord->otp_hash)) {
-            $otpRecord->increment('attempts');
-
-            throw ValidationException::withMessages([
-                'otp' => ['The verification code is incorrect.'],
-            ]);
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | OTP is correct.
-        |--------------------------------------------------------------------------
-        */
-        $otpRecord->update([
-            'verified_at' => now(),
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Verification code verified successfully.',
-        ]);
+        $result = \Illuminate\Support\Facades\DB::transaction(function () use ($email, $validated) {
+            $user = User::whereRaw('LOWER(TRIM(email)) = ?', [$email])->lockForUpdate()->first();
+            if (!$user || !in_array($user->role, ['applicant', 'admin', 'staff'], true)) return null;
+            $otp = PasswordResetOtp::where('user_id', $user->id)->where('email', $email)->latest('id')->lockForUpdate()->first();
+            if (!$otp || $otp->verified_at || $otp->expires_at->isPast() || $otp->attempts >= 5) return null;
+            if (!Hash::check($validated['otp'], $otp->otp_hash)) {
+                $otp->increment('attempts');
+                return null;
+            }
+            $token = Str::random(64);
+            $otp->update(['verified_at' => now(), 'reset_token_hash' => hash('sha256', $token)]);
+            return $token;
+        });
+        if (!$result) throw ValidationException::withMessages(['otp' => ['The verification code is invalid, expired, or already used. Please request a new code if needed.']]);
+        return response()->json(['success' => true, 'message' => 'Verification code verified successfully.', 'reset_token' => $result]);
     }
 
-    /**
-     * Reset password using a verified OTP.
-     */
     public function resetPasswordWithOtp(Request $request)
     {
         $validated = $request->validate([
             'email' => 'required|email',
             'password' => 'required|string|min:8|confirmed',
+            'reset_token' => 'required|string|size:64',
         ]);
-
         $email = strtolower(trim($validated['email']));
-
-        $user = User::where('email', $email)->first();
-
-        /*
-        |--------------------------------------------------------------------------
-        | Only applicants and admins can use OTP password reset.
-        |--------------------------------------------------------------------------
-        */
-        if (
-            !$user ||
-            !in_array($user->role, ['applicant', 'admin'], true)
-        ) {
-            throw ValidationException::withMessages([
-                'email' => ['The password reset request is invalid.'],
-            ]);
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Find the latest OTP for this user.
-        |--------------------------------------------------------------------------
-        */
-        $otpRecord = PasswordResetOtp::where('user_id', $user->id)
-            ->where('email', $email)
-            ->latest()
-            ->first();
-
-        /*
-        |--------------------------------------------------------------------------
-        | OTP must exist.
-        |--------------------------------------------------------------------------
-        */
-        if (!$otpRecord) {
-            throw ValidationException::withMessages([
-                'email' => ['The password reset request is invalid or expired.'],
-            ]);
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | OTP must have been successfully verified.
-        |--------------------------------------------------------------------------
-        */
-        if (!$otpRecord->verified_at) {
-            throw ValidationException::withMessages([
-                'email' => ['Please verify the OTP before changing your password.'],
-            ]);
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Verification must not be too old.
-        |--------------------------------------------------------------------------
-        |
-        | This gives the user 10 minutes to complete the
-        | password change after verifying the OTP.
-        |--------------------------------------------------------------------------
-        */
-        if ($otpRecord->verified_at->addMinutes(10)->isPast()) {
-            $otpRecord->delete();
-
-            throw ValidationException::withMessages([
-                'email' => ['The password reset session has expired. Please request a new OTP.'],
-            ]);
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Update the password.
-        |--------------------------------------------------------------------------
-        */
-        $user->forceFill([
-            'password' => Hash::make($validated['password']),
-            'remember_token' => Str::random(60),
-        ])->save();
-
-        /*
-        |--------------------------------------------------------------------------
-        | Delete the OTP so it cannot be reused.
-        |--------------------------------------------------------------------------
-        */
-        $otpRecord->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Password reset successfully.',
-        ]);
+        $changed = \Illuminate\Support\Facades\DB::transaction(function () use ($email, $validated) {
+            $user = User::whereRaw('LOWER(TRIM(email)) = ?', [$email])->lockForUpdate()->first();
+            if (!$user || !in_array($user->role, ['applicant', 'admin', 'staff'], true)) return false;
+            $otp = PasswordResetOtp::where('user_id', $user->id)->where('email', $email)->latest('id')->lockForUpdate()->first();
+            if (!$otp || !$otp->verified_at || $otp->verified_at->copy()->addMinutes(10)->isPast()
+                || !$otp->reset_token_hash || !hash_equals($otp->reset_token_hash, hash('sha256', $validated['reset_token']))) return false;
+            $this->completePasswordReset($user, $validated['password']);
+            return true;
+        });
+        if (!$changed) throw ValidationException::withMessages(['reset_token' => ['The password reset session is invalid or expired. Please request a new code.']]);
+        return response()->json(['success' => true, 'message' => 'Password reset successfully.']);
     }
 
     /**
@@ -469,20 +360,20 @@ class AuthController extends Controller
             'password' => 'required|string|min:8|confirmed',
         ]);
 
-        $status = Password::reset(
-            [
-                'email' => $validated['email'],
-                'password' => $validated['password'],
-                'password_confirmation' => $request->password_confirmation,
-                'token' => $validated['token'],
-            ],
-            function ($user, $password) {
-                $user->forceFill([
-                    'password' => Hash::make($password),
-                    'remember_token' => Str::random(60),
-                ])->save();
-            }
-        );
+        $email = strtolower(trim($validated['email']));
+        $status = \Illuminate\Support\Facades\DB::transaction(function () use ($email, $validated) {
+            $user = User::whereRaw('LOWER(TRIM(email)) = ?', [$email])->lockForUpdate()->first();
+            if (!$user || !in_array($user->role, ['applicant', 'admin', 'staff'], true)) return Password::INVALID_USER;
+            return Password::reset(
+                [
+                    'email' => $user->email,
+                    'password' => $validated['password'],
+                    'password_confirmation' => $validated['password_confirmation'] ?? $validated['password'],
+                    'token' => $validated['token'],
+                ],
+                fn ($account, $password) => $this->completePasswordReset($account, $password)
+            );
+        });
 
         if ($status !== Password::PASSWORD_RESET) {
             throw ValidationException::withMessages([
@@ -494,6 +385,26 @@ class AuthController extends Controller
             'success' => true,
             'message' => 'Password reset successfully.',
         ]);
+    }
+
+    /** Both recovery methods revoke existing credentials and notify the owner. */
+    private function completePasswordReset(User $user, string $password): void
+    {
+        $user->forceFill([
+            'password' => Hash::make($password),
+            'remember_token' => Str::random(60),
+        ])->save();
+        $user->tokens()->delete();
+        if (config('session.driver') === 'database') {
+            \Illuminate\Support\Facades\DB::connection(config('session.connection'))
+                ->table(config('session.table', 'sessions'))->where('user_id', $user->id)->delete();
+        }
+        PasswordResetOtp::where('user_id', $user->id)->delete();
+        Password::deleteToken($user);
+
+        // Synchronous mail inside the transaction: a transport failure rolls
+        // back the password/session changes and leaves recovery usable for retry.
+        $user->notify(new PasswordChangedNotification());
     }
 
     /**
@@ -521,6 +432,9 @@ class AuthController extends Controller
             'staff.academicPrograms',
             'applicant',
         ]);
+
+        $photo = $user->role === 'applicant' ? $user->applicant?->profile_photo : $user->profile_photo;
+        $user->setAttribute('profile_photo_url', $photo ? Storage::disk('public')->url($photo) : null);
 
         return response()->json([
             'success' => true,

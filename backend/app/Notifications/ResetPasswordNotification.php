@@ -16,7 +16,7 @@ class ResetPasswordNotification extends ResetPassword
     public function toMail($notifiable)
     {
         $frontendUrl = rtrim(
-            env('FRONTEND_URL', 'http://localhost:5173'),
+            config('app.frontend_url'),
             '/'
         );
 

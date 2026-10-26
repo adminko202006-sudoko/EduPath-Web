@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Api\Staff;
 use App\Http\Controllers\Controller;
 use App\Models\Applicant;
 use App\Models\Notification;
+use App\Services\ApplicantNotificationService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class NotificationController extends Controller
 {
@@ -68,13 +70,17 @@ class NotificationController extends Controller
             ], 403);
         }
 
-        $notification = Notification::create([
-            'user_id' => $applicant->user_id,
-            'title' => $validated['title'],
-            'message' => $validated['message'],
-            'is_read' => false,
-            'read_at' => null,
-        ]);
+        $notification = DB::transaction(function () use ($applicant, $validated) {
+            $notification = Notification::create([
+                'user_id' => $applicant->user_id,
+                'title' => $validated['title'],
+                'message' => $validated['message'],
+                'is_read' => false,
+                'read_at' => null,
+            ]);
+            app(ApplicantNotificationService::class)->queuePush($notification);
+            return $notification;
+        });
 
         $notification->load('user.applicant');
 
@@ -100,10 +106,10 @@ class NotificationController extends Controller
 
         $belongsToAssignedProgram = $notification
             ->user
-            ->applicant
-            ->admissionApplications()
-            ->whereIn('academic_program_id', $programIds)
-            ->exists();
+            ?->applicant
+            ?->admissionApplications()
+            ?->whereIn('academic_program_id', $programIds)
+            ?->exists() ?? false;
 
         if (!$belongsToAssignedProgram) {
             return response()->json([

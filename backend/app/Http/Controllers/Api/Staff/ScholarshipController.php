@@ -22,7 +22,7 @@ class ScholarshipController extends Controller
         $applications = ScholarshipApplication::with([
             'scholarship',
             'applicant.user',
-            'applicant.admissionApplications.academicProgram',
+            'applicant.admissionApplications' => fn ($query) => $query->whereIn('academic_program_id', $programIds)->with('academicProgram'),
         ])
             ->whereHas(
                 'applicant.admissionApplications',
@@ -58,7 +58,7 @@ class ScholarshipController extends Controller
         $application->load([
             'scholarship',
             'applicant.user',
-            'applicant.admissionApplications.academicProgram',
+            'applicant.admissionApplications' => fn ($query) => $query->whereIn('academic_program_id', $request->user()->staff->academicPrograms()->pluck('academic_programs.id'))->with('academicProgram'),
         ]);
 
         return response()->json([
@@ -80,17 +80,35 @@ class ScholarshipController extends Controller
             $application
         );
 
+        if (in_array($application->status, ['approved', 'rejected'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This application has an Admin review decision and can no longer be changed by Staff. The final scholarship award is recorded separately.',
+            ], 409);
+        }
+
         $validated = $request->validate([
-            'status' => 'required|in:pending,under_review,approved,rejected',
-            'remarks' => 'nullable|string|max:1000',
+            'staff_recommendation' => 'required|in:recommended,not_recommended,needs_information',
+            'staff_recommendation_remarks' => 'nullable|string|max:2000',
         ]);
 
-        $application->update($validated);
+        \Illuminate\Support\Facades\DB::transaction(function () use ($application,$request,$validated) {
+            $locked=ScholarshipApplication::whereKey($application->id)->lockForUpdate()->firstOrFail();
+            abort_if(in_array($locked->status,['approved','rejected'],true),409,'This application has a final Admin review decision.');
+            $old=$locked->staff_recommendation;
+            $locked->fill($validated);
+            $locked->staff_recommended_by=$request->user()->staff->id;
+            $locked->staff_recommended_at=now();
+            if($locked->status==='pending')$locked->status='under_review';
+            $locked->save();
+            app(\App\Services\WorkflowDecisionService::class)->event('scholarship',$locked->id,'staff_recommendation',$old,$locked->staff_recommendation,$locked->staff_recommendation_remarks,$request->user());
+            $application->setRawAttributes($locked->getAttributes(),true);
+        });
 
         $application->load([
             'scholarship',
             'applicant.user',
-            'applicant.admissionApplications.academicProgram',
+            'applicant.admissionApplications' => fn ($query) => $query->whereIn('academic_program_id', $request->user()->staff->academicPrograms()->pluck('academic_programs.id'))->with('academicProgram'),
         ]);
 
         return response()->json([

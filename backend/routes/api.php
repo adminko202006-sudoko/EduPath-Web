@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\Admin\AnnouncementController as AdminAnnouncementCo
 use App\Http\Controllers\Api\Admin\DocumentController as AdminDocumentController;
 use App\Http\Controllers\Api\Admin\AdmissionApplicationController;
 use App\Http\Controllers\Api\Admin\AdmissionPeriodController;
+use App\Http\Controllers\Api\Admin\ProfileController as AdminProfileController;
 use App\Http\Controllers\Api\Admin\StaffController as AdminStaffController;
 
 // Applicant Controllers
@@ -31,6 +32,8 @@ use App\Http\Controllers\Api\Applicant\ExamController as ApplicantExamController
 use App\Http\Controllers\Api\Applicant\NotificationController;
 use App\Http\Controllers\Api\Applicant\AdmissionPeriodController as ApplicantAdmissionPeriodController;
 use App\Http\Controllers\Api\Applicant\RequirementController as ApplicantRequirementController;
+use App\Http\Controllers\Api\Applicant\OnlineExamController as ApplicantOnlineExamController;
+use App\Http\Controllers\Api\Admin\OnlineExamController as AdminOnlineExamController;
 
 // Staff Controllers
 use App\Http\Controllers\Api\Staff\AdmissionApplicationController as StaffAdmissionApplicationController;
@@ -50,9 +53,13 @@ use App\Http\Controllers\Api\Staff\NotificationController as StaffNotificationCo
 */
 
 Route::get('/programs', [AcademicProgramController::class, 'index']);
-Route::post('/programs', [AcademicProgramController::class, 'store']);
-Route::put('/programs/{academicProgram}', [AcademicProgramController::class, 'update']);
-Route::delete('/programs/{academicProgram}', [AcademicProgramController::class, 'destroy']);
+Route::prefix('locations')->controller(\App\Http\Controllers\Api\LocationController::class)->group(function () {
+    Route::get('/countries', 'countries');
+    Route::get('/countries/{country}/provinces', 'provinces');
+    Route::get('/countries/{country}/cities', 'cities');
+});
+// Program creation, updates, and deletion are available only through the
+// authenticated /admin/programs resource below.
 
 
 
@@ -68,37 +75,37 @@ Route::prefix('auth')->group(function () {
     Route::post('/register', [
         AuthController::class,
         'register'
-    ]);
+    ])->middleware('throttle:auth-register');
 
     // Login
     Route::post('/login', [
         AuthController::class,
         'login'
-    ]);
+    ])->middleware('throttle:auth-login');
 
     // Request password reset OTP
     Route::post('/forgot-password', [
         AuthController::class,
         'forgotPassword'
-    ]);
+    ])->middleware('throttle:auth-recovery');
 
     // Verify password reset OTP
     Route::post('/verify-reset-otp', [
         AuthController::class,
         'verifyOtp'
-    ]);
+    ])->middleware('throttle:auth-verify');
 
     // Reset password using verified OTP
     Route::post('/reset-password-with-otp', [
         AuthController::class,
         'resetPasswordWithOtp'
-    ]);
+    ])->middleware('throttle:auth-verify');
 
     // Temporary old reset-link route
     Route::post('/reset-password', [
         AuthController::class,
         'resetPassword'
-    ]);
+    ])->middleware('throttle:auth-verify');
 
 });
 
@@ -110,6 +117,25 @@ Route::prefix('auth')->group(function () {
 */
 
 Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/auth/email-verification/send', [\App\Http\Controllers\Api\Auth\EmailVerificationController::class, 'send'])->middleware(['role:applicant', 'throttle:email-verification-send']);
+    Route::post('/auth/email-verification/verify', [\App\Http\Controllers\Api\Auth\EmailVerificationController::class, 'verify'])->middleware(['role:applicant', 'throttle:10,1']);
+    Route::prefix('applicant/verification')->middleware('role:applicant')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\Applicant\VerificationController::class, 'show']);
+        Route::post('/', [\App\Http\Controllers\Api\Applicant\VerificationController::class, 'submit'])->middleware('throttle:5,1');
+        Route::get('/file', [\App\Http\Controllers\Api\Applicant\VerificationController::class, 'file']);
+    });
+    Route::prefix('admin/student-verifications')->middleware('role:admin')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\Admin\StudentVerificationController::class, 'index']);
+        Route::put('/{verification}', [\App\Http\Controllers\Api\Admin\StudentVerificationController::class, 'review']);
+        Route::get('/{verification}/file', [\App\Http\Controllers\Api\Admin\StudentVerificationController::class, 'file']);
+        Route::get('/{verification}/history', [\App\Http\Controllers\Api\Admin\StudentVerificationController::class, 'history']);
+    });
+    Route::post('/auth/presence', [\App\Http\Controllers\Api\PresenceController::class, 'heartbeat'])->middleware('throttle:30,1');
+    Route::get('/scholarship-applications/{application}/attachment', \App\Http\Controllers\Api\ScholarshipAttachmentController::class);
+    Route::get('/scholarship-applications/{application}/requirements/{index}', \App\Http\Controllers\Api\ScholarshipAttachmentController::class)->whereNumber('index');
+
+    Route::get('/notification-preferences', [\App\Http\Controllers\Api\NotificationPreferenceController::class, 'show']);
+    Route::put('/notification-preferences', [\App\Http\Controllers\Api\NotificationPreferenceController::class, 'update']);
 
     /*
     |--------------------------------------------------------------------------
@@ -159,6 +185,9 @@ Route::middleware('auth:sanctum')->group(function () {
                 'update'
             ]);
 
+            // Multipart photo uploads use POST; regular edits retain PUT.
+            Route::post('/profile', [StaffProfileController::class, 'update']);
+
 
             /*
             |--------------------------------------------------------------------------
@@ -166,6 +195,7 @@ Route::middleware('auth:sanctum')->group(function () {
             |--------------------------------------------------------------------------
             */
 
+            Route::get('/application-counts', [\App\Http\Controllers\Api\Staff\DashboardController::class, 'applicationCounts']);
             Route::get('/dashboard', [
                 StaffDashboardController::class,
                 'index'
@@ -221,6 +251,11 @@ Route::middleware('auth:sanctum')->group(function () {
                     'show'
                 ]);
 
+                Route::get('/documents/{document}/file', [
+                    StaffDocumentController::class,
+                    'file'
+                ]);
+
                 Route::put('/documents/{document}', [
                     StaffDocumentController::class,
                     'update'
@@ -257,6 +292,11 @@ Route::middleware('auth:sanctum')->group(function () {
                     'destroy'
                 ]);
 
+            });
+
+            Route::middleware('permission:review_online_exams')->group(function () {
+                Route::get('/online-exams/attempts', [\App\Http\Controllers\Api\Staff\OnlineExamReviewController::class, 'index']);
+                Route::put('/online-exams/attempts/{attempt}/review', [\App\Http\Controllers\Api\Staff\OnlineExamReviewController::class, 'review']);
             });
 
 
@@ -375,6 +415,18 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('admin')
         ->middleware('role:admin')
         ->group(function () {
+            Route::get('/presence', [\App\Http\Controllers\Api\PresenceController::class, 'index']);
+
+            Route::get('/profile', [AdminProfileController::class, 'show']);
+            Route::get('/reports', [\App\Http\Controllers\Api\Admin\ReportController::class, 'index']);
+            Route::get('/reports/export', [\App\Http\Controllers\Api\Admin\ReportController::class, 'export']);
+            Route::get('/activity', [\App\Http\Controllers\Api\Admin\ReportController::class, 'activity']);
+            Route::get('/application-counts', [\App\Http\Controllers\Api\Admin\DashboardController::class, 'applicationCounts']);
+            Route::get('/notification-deliveries', [\App\Http\Controllers\Api\Admin\ReportController::class, 'deliveries']);
+            Route::post('/notification-deliveries/{delivery}/retry', [\App\Http\Controllers\Api\Admin\ReportController::class, 'retry']);
+            Route::get('/scholarship-applications/{application}/history', [\App\Http\Controllers\Api\Admin\ScholarshipAwardController::class, 'history']);
+            Route::put('/scholarship-applications/{application}/award', [\App\Http\Controllers\Api\Admin\ScholarshipAwardController::class, 'update']);
+            Route::post('/profile', [AdminProfileController::class, 'update']);
 
 
 
@@ -528,6 +580,11 @@ Route::middleware('auth:sanctum')->group(function () {
             |--------------------------------------------------------------------------
             */
 
+            Route::post('/admission-applications', [
+                AdmissionApplicationController::class,
+                'store'
+            ]);
+
             Route::get('/admission-applications', [
                 AdmissionApplicationController::class,
                 'index'
@@ -536,6 +593,16 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/admission-applications/{application}', [
                 AdmissionApplicationController::class,
                 'show'
+            ]);
+
+            Route::put('/admission-applications/{application}', [
+                AdmissionApplicationController::class,
+                'update'
+            ]);
+
+            Route::delete('/admission-applications/{application}', [
+                AdmissionApplicationController::class,
+                'destroy'
             ]);
 
             Route::put('/admission-applications/{application}/approve', [
@@ -555,9 +622,42 @@ Route::middleware('auth:sanctum')->group(function () {
             |--------------------------------------------------------------------------
             */
 
+            Route::get('exams/{exam}/candidates', [AdminExamController::class, 'candidates']);
+            Route::post('exams/{exam}/roster', [\App\Http\Controllers\Api\Admin\ExamRosterController::class, 'store']);
+            Route::get('exams/{exam}/roster', [\App\Http\Controllers\Api\Admin\ExamRosterController::class, 'show']);
+            Route::post('exams/{exam}/assignments', [AdminExamController::class, 'assignApplicants']);
+
+            Route::put('exams/{exam}/assignments/{assignment}', [
+                AdminExamController::class,
+                'updateAssignment',
+            ]);
+
+            Route::post('exams/{exam}/release-results', [
+                AdminExamController::class,
+                'releaseResults',
+            ]);
+
             Route::apiResource(
                 'exams',
                 AdminExamController::class
+            );
+
+            /*
+            |--------------------------------------------------------------------------
+            | Online Examination - official result release
+            |--------------------------------------------------------------------------
+            */
+
+            Route::put('online-exams/settings', [AdminOnlineExamController::class, 'updateSettings']);
+            Route::get('online-exams/questions', [AdminOnlineExamController::class, 'questions']);
+            Route::post('online-exams/questions', [AdminOnlineExamController::class, 'storeQuestion']);
+            Route::put('online-exams/questions/{question}', [AdminOnlineExamController::class, 'updateQuestion']);
+            Route::delete('online-exams/questions/{question}', [AdminOnlineExamController::class, 'destroyQuestion']);
+            Route::get('online-exams/attempts', [AdminOnlineExamController::class, 'attempts']);
+            Route::post('online-exams/retake-grants', [AdminOnlineExamController::class, 'grantRetake']);
+            Route::post(
+                'online-exams/attempts/{attempt}/release',
+                [AdminOnlineExamController::class, 'release']
             );
 
 
@@ -589,6 +689,17 @@ Route::middleware('auth:sanctum')->group(function () {
                 'destroy'
             ]);
 
+            /*
+            |--------------------------------------------------------------
+            | Authenticated file streaming (private applicant uploads)
+            |--------------------------------------------------------------
+            */
+
+            Route::get('/documents/{document}/file', [
+                AdminDocumentController::class,
+                'file'
+            ]);
+
         });
 
 
@@ -601,6 +712,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('applicant')
         ->middleware('role:applicant')
         ->group(function () {
+
+            Route::get('/onboarding', [\App\Http\Controllers\Api\Applicant\OnboardingController::class, 'show']);
+            Route::patch('/onboarding', [\App\Http\Controllers\Api\Applicant\OnboardingController::class, 'update']);
+            Route::post('/onboarding/restart', [\App\Http\Controllers\Api\Applicant\OnboardingController::class, 'restart'])->name('applicant.onboarding.restart');
 
             Route::post('/documents/{document}/replace', [
                 DocumentController::class,
@@ -638,7 +753,7 @@ Route::middleware('auth:sanctum')->group(function () {
             */
 
             Route::get('/programs', [
-                ApplicantRequirementController::class,
+                ApplicantProgramController::class,
                 'index'
             ]);
             Route::get(
@@ -672,6 +787,11 @@ Route::middleware('auth:sanctum')->group(function () {
                 'show'
             ]);
 
+            Route::delete('/admissions/{application}', [
+                AdmissionController::class,
+                'withdraw'
+            ]);
+
 
             /*
             |--------------------------------------------------------------------------
@@ -692,6 +812,11 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/documents/{document}', [
                 DocumentController::class,
                 'show'
+            ]);
+
+            Route::get('/documents/{document}/file', [
+                DocumentController::class,
+                'file'
             ]);
 
             Route::delete('/documents/{document}', [
@@ -743,9 +868,64 @@ Route::middleware('auth:sanctum')->group(function () {
                 'index'
             ]);
 
+            Route::get('/exams/{assignment}/roster', [ApplicantExamController::class, 'roster']);
             Route::get('/exams/{assignment}', [
                 ApplicantExamController::class,
                 'show'
+            ]);
+
+            /*
+            |--------------------------------------------------------------------------
+            | Online Examination (computer-based)
+            |--------------------------------------------------------------------------
+            |
+            | Contract: ONLINE_EXAM_API_CONTRACT.md. The mobile client treats a
+            | missing route as "not enabled yet".
+            */
+
+            Route::get('/online-exam', [
+                ApplicantOnlineExamController::class,
+                'index'
+            ]);
+
+            Route::post('/online-exam/start', [
+                ApplicantOnlineExamController::class,
+                'start'
+            ]);
+
+            Route::get('/online-exam/attempt', [
+                ApplicantOnlineExamController::class,
+                'activeAttempt'
+            ]);
+
+            Route::get('/online-exam/attempts/{attempt}', [
+                ApplicantOnlineExamController::class,
+                'attempt'
+            ]);
+
+            Route::get('/online-exam/attempts/{attempt}/questions', [
+                ApplicantOnlineExamController::class,
+                'questions'
+            ]);
+
+            Route::post('/online-exam/attempts/{attempt}/answers', [
+                ApplicantOnlineExamController::class,
+                'saveAnswer'
+            ]);
+
+            Route::post('/online-exam/attempts/{attempt}/navigate', [
+                ApplicantOnlineExamController::class,
+                'navigate'
+            ]);
+
+            Route::post('/online-exam/attempts/{attempt}/submit', [
+                ApplicantOnlineExamController::class,
+                'submit'
+            ]);
+
+            Route::get('/online-exam/attempts/{attempt}/result', [
+                ApplicantOnlineExamController::class,
+                'result'
             ]);
 
 
@@ -758,6 +938,11 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/announcements', [
                 NotificationController::class,
                 'announcements'
+            ]);
+
+            Route::delete('/announcements/{announcement}', [
+                NotificationController::class,
+                'dismissAnnouncement'
             ]);
 
             Route::get('/notifications', [

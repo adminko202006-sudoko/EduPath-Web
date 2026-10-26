@@ -6,9 +6,30 @@ use App\Http\Controllers\Controller;
 use App\Models\AdmissionApplication;
 use App\Models\AdmissionApplicationHistory;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class AdmissionApplicationController extends Controller
 {
+    /** Create an application for an applicant during the current open period. */
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'applicant_id' => 'required|integer|exists:applicants,id',
+            'academic_program_id' => 'required|integer|exists:academic_programs,id',
+            'remarks' => 'nullable|string|max:1000',
+        ]);
+
+        $application = app(\App\Services\AdmissionSubmissionService::class)->submit(
+            (int) $validated['applicant_id'], (int) $validated['academic_program_id'], $validated['remarks'] ?? null, $request->user()
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Admission application created successfully.',
+            'data' => $application->load(['applicant.user', 'academicProgram', 'documents', 'histories.user']),
+        ], 201);
+    }
+
     /**
      * Display all admission applications.
      */
@@ -111,6 +132,78 @@ class AdmissionApplicationController extends Controller
         ]);
     }
 
+    /** Update only editable application details; workflow status is handled by approve/reject. */
+    public function update(Request $request, AdmissionApplication $application)
+    {
+        $validated = $request->validate([
+            'academic_program_id' => 'sometimes|required|integer|exists:academic_programs,id',
+            'remarks' => 'sometimes|nullable|string|max:1000',
+        ]);
+
+        if (!$validated) {
+            return response()->json(['success' => false, 'message' => 'Provide at least one editable field.'], 422);
+        }
+
+        return DB::transaction(function () use ($request, $application, $validated) {
+            $locked = AdmissionApplication::whereKey($application->id)->lockForUpdate()->firstOrFail();
+            if (!in_array($locked->status, ['pending', 'rejected'], true)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only pending or rejected applications can be edited.',
+                ], 409);
+            }
+
+            $locked->fill($validated);
+            $locked->save();
+
+            AdmissionApplicationHistory::create([
+                'admission_application_id' => $locked->id,
+                'user_id' => $request->user()->id,
+                'action' => 'application_updated',
+                'old_status' => $locked->status,
+                'new_status' => $locked->status,
+                'remarks' => 'Application details updated by an administrator.',
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Admission application updated successfully.',
+                'data' => $locked->load(['applicant.user', 'academicProgram', 'documents', 'histories.user']),
+            ]);
+        }, 3);
+    }
+
+    /** Withdraw instead of hard-deleting so documents and the audit trail remain intact. */
+    public function destroy(Request $request, AdmissionApplication $application)
+    {
+        return DB::transaction(function () use ($request, $application) {
+            $locked = AdmissionApplication::whereKey($application->id)->lockForUpdate()->firstOrFail();
+            if (!in_array($locked->status, ['pending', 'rejected'], true)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only pending or rejected applications can be withdrawn.',
+                ], 409);
+            }
+
+            $oldStatus = $locked->status;
+            $locked->update(['status' => 'withdrawn']);
+            AdmissionApplicationHistory::create([
+                'admission_application_id' => $locked->id,
+                'user_id' => $request->user()->id,
+                'action' => 'withdrawn',
+                'old_status' => $oldStatus,
+                'new_status' => 'withdrawn',
+                'remarks' => 'Withdrawn by an administrator; record and documents retained.',
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Application withdrawn. Its record and documents were retained for audit.',
+                'data' => ['id' => $locked->id, 'status' => $locked->status],
+            ]);
+        }, 3);
+    }
+
     /**
      * Approve an admission application.
      */
@@ -118,20 +211,14 @@ class AdmissionApplicationController extends Controller
         Request $request,
         AdmissionApplication $application
     ) {
-        $oldStatus = $application->status;
+        if ($application->status === 'withdrawn') {
+            return response()->json([
+                'success' => false,
+                'message' => 'A withdrawn application cannot be approved.',
+            ], 409);
+        }
 
-        $application->update([
-            'status' => 'approved',
-        ]);
-
-        AdmissionApplicationHistory::create([
-            'admission_application_id' => $application->id,
-            'user_id' => $request->user()->id,
-            'action' => 'status_updated',
-            'old_status' => $oldStatus,
-            'new_status' => 'approved',
-            'remarks' => null,
-        ]);
+        app(\App\Services\WorkflowDecisionService::class)->admission($application, 'approved', null, $request->user());
 
         return response()->json([
             'success' => true,
@@ -152,25 +239,18 @@ class AdmissionApplicationController extends Controller
         Request $request,
         AdmissionApplication $application
     ) {
+        if ($application->status === 'withdrawn') {
+            return response()->json([
+                'success' => false,
+                'message' => 'A withdrawn application cannot be rejected.',
+            ], 409);
+        }
+
         $validated = $request->validate([
             'remarks' => 'nullable|string|max:1000',
         ]);
 
-        $oldStatus = $application->status;
-
-        $application->update([
-            'status' => 'rejected',
-            'remarks' => $validated['remarks'] ?? null,
-        ]);
-
-        AdmissionApplicationHistory::create([
-            'admission_application_id' => $application->id,
-            'user_id' => $request->user()->id,
-            'action' => 'status_updated',
-            'old_status' => $oldStatus,
-            'new_status' => 'rejected',
-            'remarks' => $validated['remarks'] ?? null,
-        ]);
+        app(\App\Services\WorkflowDecisionService::class)->admission($application, 'rejected', $validated['remarks'] ?? null, $request->user());
 
         return response()->json([
             'success' => true,

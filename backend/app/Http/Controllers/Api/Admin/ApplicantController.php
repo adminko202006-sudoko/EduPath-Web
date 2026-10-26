@@ -120,7 +120,12 @@ class ApplicantController extends Controller
             'address' => 'nullable|string',
         ]);
 
-        $applicant->update($validated);
+        \Illuminate\Support\Facades\DB::transaction(function () use ($applicant, $validated) {
+            $locked = Applicant::whereKey($applicant->id)->lockForUpdate()->firstOrFail();
+            app(\App\Services\StudentVerificationService::class)->protectProfileIdentity($locked, $validated);
+            $locked->update($validated);
+        });
+        $applicant->refresh();
 
         return response()->json([
             'success' => true,

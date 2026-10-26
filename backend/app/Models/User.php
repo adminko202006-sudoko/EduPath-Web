@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -13,11 +14,22 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
+    public static function normalizeEmail(string $email): string
+    {
+        return strtolower(trim($email));
+    }
+
+    protected function email(): Attribute
+    {
+        return Attribute::make(set: fn (string $value) => self::normalizeEmail($value));
+    }
+
     protected $fillable = [
         'name',
         'email',
         'password',
         'role',
+        'profile_photo',
     ];
 
     protected $hidden = [
@@ -42,6 +54,11 @@ class User extends Authenticatable
     public function applicant()
     {
         return $this->hasOne(Applicant::class);
+    }
+
+    public function onboardingStates()
+    {
+        return $this->hasMany(UserOnboardingState::class);
     }
 
     public function staff()

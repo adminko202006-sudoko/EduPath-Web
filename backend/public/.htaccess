@@ -5,6 +5,9 @@
 
     RewriteEngine On
 
+    # Application documents must only be streamed by authenticated API routes.
+    RewriteRule ^storage/documents(?:/|$) - [F,L,NC]
+
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]

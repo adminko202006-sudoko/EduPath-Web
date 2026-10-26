@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api\Staff;
 
 use App\Http\Controllers\Controller;
 use App\Models\AdmissionApplication;
-use App\Models\AdmissionApplicationHistory;
 use Illuminate\Http\Request;
 
 class AdmissionApplicationController extends Controller
@@ -178,20 +177,14 @@ class AdmissionApplicationController extends Controller
             $application
         );
 
-        $oldStatus = $application->status;
+        if ($application->status === 'withdrawn') {
+            return response()->json([
+                'success' => false,
+                'message' => 'A withdrawn application cannot be approved.',
+            ], 409);
+        }
 
-        $application->update([
-            'status' => 'approved',
-        ]);
-
-        AdmissionApplicationHistory::create([
-            'admission_application_id' => $application->id,
-            'user_id' => $request->user()->id,
-            'action' => 'status_updated',
-            'old_status' => $oldStatus,
-            'new_status' => 'approved',
-            'remarks' => null,
-        ]);
+        app(\App\Services\WorkflowDecisionService::class)->admission($application, 'approved', null, $request->user());
 
         return response()->json([
             'success' => true,
@@ -215,25 +208,18 @@ class AdmissionApplicationController extends Controller
             $application
         );
 
+        if ($application->status === 'withdrawn') {
+            return response()->json([
+                'success' => false,
+                'message' => 'A withdrawn application cannot be rejected.',
+            ], 409);
+        }
+
         $validated = $request->validate([
             'remarks' => 'nullable|string|max:1000',
         ]);
 
-        $oldStatus = $application->status;
-
-        $application->update([
-            'status' => 'rejected',
-            'remarks' => $validated['remarks'] ?? null,
-        ]);
-
-        AdmissionApplicationHistory::create([
-            'admission_application_id' => $application->id,
-            'user_id' => $request->user()->id,
-            'action' => 'status_updated',
-            'old_status' => $oldStatus,
-            'new_status' => 'rejected',
-            'remarks' => $validated['remarks'] ?? null,
-        ]);
+        app(\App\Services\WorkflowDecisionService::class)->admission($application, 'rejected', $validated['remarks'] ?? null, $request->user());
 
         return response()->json([
             'success' => true,

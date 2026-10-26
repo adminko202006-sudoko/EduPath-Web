@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Staff;
 
+use App\Http\Controllers\Concerns\ServesApplicationDocumentFiles;
 use App\Http\Controllers\Controller;
 use App\Models\ApplicationDocument;
 use App\Models\ApplicationDocumentHistory;
@@ -9,6 +10,8 @@ use Illuminate\Http\Request;
 
 class DocumentController extends Controller
 {
+    use ServesApplicationDocumentFiles;
+
     /**
      * Get documents belonging to applicants
      * in programs assigned to the logged-in staff.
@@ -68,6 +71,21 @@ class DocumentController extends Controller
     }
 
     /**
+     * Stream the uploaded file for a document in the staff's programs.
+     */
+    public function file(
+        Request $request,
+        ApplicationDocument $document
+    ) {
+        $this->ensureAssignedDocument(
+            $request,
+            $document
+        );
+
+        return $this->serveApplicationDocumentFile($document);
+    }
+
+    /**
      * Verify, reject, or update a document status.
      */
     public function update(
@@ -84,28 +102,7 @@ class DocumentController extends Controller
             'remarks' => 'nullable|string|max:1000',
         ]);
 
-        $oldStatus = $document->status;
-        $newStatus = $validated['status'];
-
-        $document->update([
-            'status' => $newStatus,
-            'remarks' => $validated['remarks'] ?? null,
-        ]);
-
-        /*
-        |--------------------------------------------------------------------------
-        | Record Document Review History
-        |--------------------------------------------------------------------------
-        */
-
-        ApplicationDocumentHistory::create([
-            'application_document_id' => $document->id,
-            'user_id' => $request->user()->id,
-            'action' => 'status_updated',
-            'old_status' => $oldStatus,
-            'new_status' => $newStatus,
-            'remarks' => $validated['remarks'] ?? null,
-        ]);
+        app(\App\Services\WorkflowDecisionService::class)->documentReview($document, $validated, $request->user());
 
         return response()->json([
             'success' => true,

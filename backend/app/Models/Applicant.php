@@ -20,6 +20,14 @@ class Applicant extends Model
         'address',
         'profile_photo',
         'is_archived',
+        'primary_school',
+        'primary_school_year',
+        'junior_high_school',
+        'senior_high_school',
+        'shs_strand',
+        'lrn',
+        'previous_college_university',
+        'registration_details',
     ];
 
     protected function casts(): array
@@ -27,6 +35,7 @@ class Applicant extends Model
         return [
             'birth_date' => 'date',
             'is_archived' => 'boolean',
+            'registration_details' => 'array',
         ];
     }
     /*

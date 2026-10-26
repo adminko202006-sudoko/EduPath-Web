@@ -28,18 +28,22 @@ class AnnouncementNotificationService
 
         // A scheduled announcement should not notify applicants before its publication time.
         if ($announcement->published_at && $announcement->published_at->isFuture()) {
+            $announcement->forceFill(['dispatch_pending'=>true])->save();
             return;
         }
 
-        $fcmTokens = [];
-
-        DB::transaction(function () use ($announcement, &$fcmTokens) {
+        DB::transaction(function () use ($announcement) {
+            // Serialize syncs for this announcement without a schema change.
+            $announcement = Announcement::whereKey($announcement->id)->lockForUpdate()->firstOrFail();
+            if ($announcement->status !== 'published' || $announcement->published_at?->isFuture()) return;
             $applicants = User::query()
                 ->where('role', 'applicant')
+                ->whereNotIn('id', DB::table('announcement_dismissals')->select('user_id')
+                    ->where('announcement_id', $announcement->id))
                 ->get(['id', 'fcm_token']);
 
             foreach ($applicants as $user) {
-                Notification::updateOrCreate(
+                $notification = Notification::updateOrCreate(
                     [
                         'user_id' => $user->id,
                         'announcement_id' => $announcement->id,
@@ -51,22 +55,9 @@ class AnnouncementNotificationService
                     ]
                 );
 
-                if (!empty($user->fcm_token)) {
-                    $fcmTokens[] = $user->fcm_token;
-                }
+                app(ApplicantNotificationService::class)->queuePush($notification);
             }
+            $announcement->forceFill(['dispatch_pending'=>false])->save();
         });
-
-        if (!empty($fcmTokens)) {
-            $this->fcmService->sendNotification(
-                tokens: array_unique($fcmTokens),
-                title: '📢 ' . $announcement->title,
-                body: $announcement->content,
-                data: [
-                    'type' => 'announcement',
-                    'announcement_id' => (string) $announcement->id,
-                ]
-            );
-        }
     }
 }

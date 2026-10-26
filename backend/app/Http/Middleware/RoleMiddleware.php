@@ -27,6 +27,16 @@ class RoleMiddleware
             ], 403);
         }
 
+        if ($role === 'staff') {
+            $staff = $request->user()->staff;
+            if (!$staff || $staff->status !== 'active') {
+                return response()->json([
+                    'success' => false,
+                    'message' => $staff ? 'Your staff account is inactive.' : 'Staff profile not found.',
+                ], 403);
+            }
+        }
+
         return $next($request);
     }
 }

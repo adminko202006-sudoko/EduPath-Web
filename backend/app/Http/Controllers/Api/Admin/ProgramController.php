@@ -81,6 +81,9 @@ class ProgramController extends Controller
      */
     public function destroy(AcademicProgram $program)
     {
+        if ($program->admissionApplications()->exists() || \App\Models\StudentVerification::where('academic_program_id', $program->id)->exists()) {
+            return response()->json(['message' => 'This program is linked to student records. Deactivate it instead.'], 409);
+        }
         $program->delete();
 
         return response()->json([

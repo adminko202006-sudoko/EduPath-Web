@@ -9,7 +9,7 @@ class AcademicProgramController extends Controller
 {
     public function index()
     {
-        $programs = AcademicProgram::orderBy('name')->get();
+        $programs = AcademicProgram::where('is_active', true)->orderBy('name')->get();
 
         return response()->json([
             'success' => true,
