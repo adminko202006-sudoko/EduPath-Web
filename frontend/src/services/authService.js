@@ -1,8 +1,9 @@
 import api from './api';
+import { registrationPayload } from './registrationPayload';
 
 const authService = {
   async register(userData) {
-    const response = await api.post('/auth/register', userData);
+    const response = await api.post('/auth/register', registrationPayload(userData));
     return response.data;
   },
 

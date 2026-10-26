@@ -1,0 +1,8 @@
+@media print {
+  body:has(.ep-report-page) :is(.ep-topbar, .ep-sidebar, .ep-report-tools) { display: none !important; }
+  body:has(.ep-report-page) :is(#root, .ep-workspace, main, .overflow-y-auto, .overflow-hidden) { height: auto !important; max-height: none !important; overflow: visible !important; }
+  body:has(.ep-report-page) .lg\:ml-\[280px\] { margin-left: 0 !important; }
+  .ep-report-page { color: #123b5d !important; background: white !important; }
+  .ep-report-page .ep-card { break-inside: avoid; border: 1px solid #cbd5e1; box-shadow: none; }
+  .ep-report-page :is(table, td, th) { color: #123b5d !important; background: white !important; }
+}

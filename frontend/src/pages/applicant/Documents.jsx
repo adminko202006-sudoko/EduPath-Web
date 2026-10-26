@@ -1,6 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useAuth } from '../../context/AuthContext';
+import { ConfirmationDialog } from '../../components/ui/ConfirmDialog';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useAuth } from '../../context/useAuth';
 import api from '../../services/api';
+import { openPrivateDocument } from '../../services/documentFile';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 import {
   FolderOpen,
@@ -25,6 +29,10 @@ import {
 const Documents = () => {
   const { token } = useAuth();
 
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const deletingRef = useRef(false);
+
   const [documents, setDocuments] = useState([]);
   const [requirements, setRequirements] = useState([]);
   const [admissionApplication, setAdmissionApplication] = useState(null);
@@ -36,9 +44,9 @@ const Documents = () => {
   // Replacement state
   const [replacementDocument, setReplacementDocument] = useState(null);
   const [replacing, setReplacing] = useState(false);
+  const replacingRef = useRef(false);
 
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [requirementsLoading, setRequirementsLoading] = useState(false);
 
@@ -51,7 +59,7 @@ const Documents = () => {
   // LOAD ADMISSION APPLICATION
   // ==========================================
 
-  const loadAdmissionApplication = async () => {
+  const loadAdmissionApplication = useCallback(async () => {
     try {
       const response = await api.get('/applicant/admissions', {
         headers: {
@@ -91,13 +99,13 @@ const Documents = () => {
 
       return null;
     }
-  };
+  }, [token]);
 
   // ==========================================
   // LOAD REQUIREMENTS FOR PROGRAM
   // ==========================================
 
-  const loadRequirements = async (application) => {
+  const loadRequirements = useCallback(async (application) => {
     if (!application) {
       setRequirements([]);
       return;
@@ -145,13 +153,13 @@ const Documents = () => {
     } finally {
       setRequirementsLoading(false);
     }
-  };
+  }, [token]);
 
   // ==========================================
   // LOAD DOCUMENTS
   // ==========================================
 
-  const loadDocuments = async () => {
+  const loadDocuments = useCallback(async () => {
     try {
       const response = await api.get(
         '/applicant/documents',
@@ -184,7 +192,15 @@ const Documents = () => {
 
       return false;
     }
-  };
+  }, [token]);
+  useAutoRefresh(async () => {
+    const application = await loadAdmissionApplication();
+
+    await Promise.all([
+      loadDocuments(),
+      loadRequirements(application),
+    ]);
+  });
 
   // ==========================================
   // INITIAL LOAD
@@ -211,31 +227,13 @@ const Documents = () => {
     };
 
     loadPage();
-  }, [token]);
+  }, [token, loadAdmissionApplication, loadDocuments, loadRequirements]);
 
   // ==========================================
   // REFRESH
   // ==========================================
 
-  const handleRefresh = async () => {
-    if (!token) {
-      return;
-    }
-
-    setRefreshing(true);
-    setError('');
-    setMessage('');
-
-    const application =
-      await loadAdmissionApplication();
-
-    await Promise.all([
-      loadDocuments(),
-      loadRequirements(application),
-    ]);
-
-    setRefreshing(false);
-  };
+  
 
   // ==========================================
   // FILE CHANGE
@@ -294,6 +292,7 @@ const Documents = () => {
   // ==========================================
 
   const handleReplaceStart = (document) => {
+    if (replacingRef.current || deletingRef.current || uploading) return;
     if (!document) {
       return;
     }
@@ -319,7 +318,7 @@ const Documents = () => {
     }
 
     setTimeout(() => {
-      document
+      window.document
         .getElementById('document-file')
         ?.scrollIntoView({
           behavior: 'smooth',
@@ -353,6 +352,7 @@ const Documents = () => {
   // ==========================================
 
   const handleReplace = async () => {
+    if (replacingRef.current || deletingRef.current) return;
     setMessage('');
     setError('');
 
@@ -391,6 +391,7 @@ const Documents = () => {
       return;
     }
 
+    replacingRef.current = true;
     setReplacing(true);
 
     try {
@@ -447,6 +448,7 @@ const Documents = () => {
         );
       }
     } finally {
+      replacingRef.current = false;
       setReplacing(false);
     }
   };
@@ -457,6 +459,7 @@ const Documents = () => {
 
   const handleUpload = async (e) => {
     e.preventDefault();
+    if (uploading || replacingRef.current || deletingRef.current) return;
 
     setMessage('');
     setError('');
@@ -572,8 +575,8 @@ const Documents = () => {
   // VIEW DOCUMENT
   // ==========================================
 
-  const handleView = (filePath) => {
-    if (!filePath) {
+  const handleView = async (doc) => {
+    if (!doc?.file_path) {
       setError(
         'Document file is not available.'
       );
@@ -581,57 +584,46 @@ const Documents = () => {
       return;
     }
 
-    const fileUrl =
-      `http://127.0.0.1:8000/storage/${filePath}`;
-
-    window.open(
-      fileUrl,
-      '_blank',
-      'noopener,noreferrer'
-    );
+    try {
+      // Private files are streamed through the authenticated endpoint so
+      // ownership is enforced server-side instead of relying on unguessable
+      // public /storage/ URLs.
+      await openPrivateDocument(
+        `/applicant/documents/${doc.id}/file`
+      );
+    } catch {
+      setError(
+        'Unable to open the document right now. Please try again.'
+      );
+    }
   };
 
   // ==========================================
   // DELETE DOCUMENT
   // ==========================================
 
-  const handleDelete = async (documentId) => {
-    const confirmed = window.confirm(
-      'Are you sure you want to delete this document?'
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
+  const handleDelete = async () => {
+    if (!deleteTarget || deletingRef.current) return;
+    deletingRef.current = true;
+    setDeleting(true);
     setMessage('');
     setError('');
 
     try {
-      await api.delete(
-        `/applicant/documents/${documentId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      setMessage(
-        'Document deleted successfully.'
-      );
-
+      await api.delete(`/applicant/documents/${deleteTarget.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (replacementDocument?.id === deleteTarget.id) cancelReplacement();
+      setDeleteTarget(null);
+      setMessage('Rejected document deleted successfully. You can upload a new file from the requirement checklist.');
       await loadDocuments();
     } catch (err) {
-      console.error(
-        'Failed to delete document:',
-        err
-      );
-
-      setError(
-        err.response?.data?.message ||
-          'Failed to delete document.'
-      );
+      setDeleteTarget(null);
+      setError(err.response?.data?.message || 'Failed to delete document. Please try again.');
+      await loadDocuments();
+    } finally {
+      deletingRef.current = false;
+      setDeleting(false);
     }
   };
 
@@ -725,7 +717,7 @@ const Documents = () => {
   // FIND DOCUMENT FOR REQUIREMENT
   // ==========================================
 
-  const findDocumentForRequirement = (
+  const findDocumentForRequirement = useCallback((
     requirement
   ) => {
     if (!requirement) {
@@ -747,7 +739,7 @@ const Documents = () => {
         uploadedName === requirementName
       );
     });
-  };
+  }, [documents]);
 
   // ==========================================
   // REQUIREMENT CHECKLIST
@@ -767,7 +759,7 @@ const Documents = () => {
         };
       }
     );
-  }, [requirements, documents]);
+  }, [requirements, findDocumentForRequirement]);
 
   // ==========================================
   // REQUIREMENT STATISTICS
@@ -889,7 +881,7 @@ const Documents = () => {
       {/* HERO */}
 
       <div className="ep-card overflow-hidden rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm ep-hover-lift">
-        <div className="ep-brand-gradient p-7">
+        <div className="ep-page-banner ep-brand-gradient p-7">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
 
             <div className="flex items-center gap-4">
@@ -903,7 +895,7 @@ const Documents = () => {
                   Applicant Portal
                 </p>
 
-                <h1 className="text-3xl font-bold text-white mt-1">
+                <h1 data-tutorial-target="applicant-documents-intro" className="text-3xl font-bold text-white mt-1">
                   My Documents
                 </h1>
 
@@ -914,25 +906,7 @@ const Documents = () => {
 
             </div>
 
-            <button
-              type="button"
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 disabled:opacity-60 text-white border border-white/20 px-4 py-2.5 rounded-xl font-semibold text-sm transition-colors duration-200"
-            >
-              <RefreshCw
-                size={17}
-                className={
-                  refreshing
-                    ? 'animate-spin'
-                    : ''
-                }
-              />
-
-              {refreshing
-                ? 'Refreshing...'
-                : 'Refresh'}
-            </button>
+            
 
           </div>
         </div>
@@ -962,7 +936,7 @@ const Documents = () => {
       )}
 
       {error && (
-        <div className="flex items-start gap-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400 px-5 py-4 rounded-2xl animate-fade-up">
+        <ErrorMessage message={error}><div className="flex items-start gap-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400 px-5 py-4 rounded-2xl animate-fade-up">
 
           <AlertCircle
             size={20}
@@ -979,7 +953,7 @@ const Documents = () => {
             </p>
           </div>
 
-        </div>
+        </div></ErrorMessage>
       )}
 
       {/* REQUIREMENT STATISTICS */}
@@ -1314,14 +1288,14 @@ const Documents = () => {
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2 lg:flex-shrink-0">
+                        <div className="flex flex-wrap items-center gap-2 lg:flex-shrink-0">
 
                           {document?.file_path && (
                             <button
                               type="button"
                               onClick={() =>
                                 handleView(
-                                  document.file_path
+                                  document
                                 )
                               }
                               className="inline-flex items-center gap-2 bg-[#123B5D] hover:bg-[#0F3553] text-white font-semibold px-4 py-2.5 rounded-xl text-sm transition-colors duration-200"
@@ -1342,8 +1316,8 @@ const Documents = () => {
                               className="inline-flex items-center gap-2 bg-[#F4B400] hover:bg-[#D9A000] text-white font-semibold px-4 py-2.5 rounded-xl text-sm transition-colors duration-200"
                             >
                               <RefreshCw size={17} />
-                              Replace
-                            </button>
+                            Re-upload
+                          </button>
                           )}
 
                           {!document && (
@@ -1413,7 +1387,7 @@ const Documents = () => {
 
               <h2 className="text-xl font-bold text-[#123B5D] dark:text-white">
                 {replacementDocument
-                  ? 'Replace Rejected Document'
+                  ? 'Re-upload Rejected Document'
                   : 'Upload Document'}
               </h2>
 
@@ -1631,14 +1605,6 @@ const Documents = () => {
                   Admission Application
                 </p>
 
-                <p className="text-sm text-[#123B5D] dark:text-blue-300 mt-1">
-                  Application ID:{' '}
-                  <span className="font-bold">
-                    {admissionApplicationId ||
-                      'Not found'}
-                  </span>
-                </p>
-
                 {admissionApplication && (
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     Program:{' '}
@@ -1706,8 +1672,8 @@ const Documents = () => {
 
               {replacementDocument
                 ? replacing
-                  ? 'Replacing...'
-                  : 'Replace Document'
+                  ? 'Uploading...'
+                  : 'Re-upload Document'
                 : uploading
                 ? 'Uploading...'
                 : 'Upload Document'}
@@ -1889,7 +1855,7 @@ const Documents = () => {
                           type="button"
                           onClick={() =>
                             handleView(
-                              doc.file_path
+                              doc
                             )
                           }
                           disabled={
@@ -1912,22 +1878,23 @@ const Documents = () => {
                             className="inline-flex items-center gap-2 bg-[#F4B400] hover:bg-[#D9A000] text-white font-semibold px-4 py-2.5 rounded-xl text-sm transition-colors duration-200"
                           >
                             <RefreshCw size={17} />
-                            Replace
+                            Re-upload
                           </button>
                         )}
 
+                        {isRejected && (
                         <button
                           type="button"
                           onClick={() =>
-                            handleDelete(
-                              doc.id
-                            )
+                            setDeleteTarget(doc)
                           }
+                          disabled={deleting || replacing || uploading}
                           className="inline-flex items-center gap-2 bg-red-50 dark:bg-red-500/10 hover:bg-red-600 text-red-600 hover:text-white border border-red-200 dark:border-red-500/20 hover:border-red-600 font-semibold px-4 py-2.5 rounded-xl text-sm transition-colors duration-200"
                         >
                           <Trash2 size={17} />
                           Delete
                         </button>
+                        )}
 
                       </div>
 
@@ -1941,6 +1908,17 @@ const Documents = () => {
 
         </div>
       </div>
+
+      <ConfirmationDialog
+        open={Boolean(deleteTarget)}
+        title="Delete rejected document?"
+        message={`Delete ${deleteTarget?.document_name || 'this document'}? This will remove it from your admission requirements. You can re-upload a corrected file instead, or upload a new file after deleting.`}
+        confirmLabel={deleting ? 'Deleting...' : 'Delete'}
+        cancelLabel="Cancel"
+        busy={deleting}
+        onCancel={() => { if (!deletingRef.current) setDeleteTarget(null); }}
+        onConfirm={handleDelete}
+      />
 
       {/* INFORMATION FOOTER */}
 

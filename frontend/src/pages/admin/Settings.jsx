@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import useNotificationPreferences from '../../hooks/useNotificationPreferences';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
-import { useAuth } from '../../context/AuthContext';
-import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/useAuth';
+import { useTheme } from '../../context/useTheme';
 
 import {
   User,
@@ -30,7 +32,7 @@ import {
 } from 'lucide-react';
 
 const SectionHeader = ({ icon: Icon, title, description }) => (
-  <div className="relative overflow-hidden rounded-2xl ep-brand-gradient shadow-lg">
+  <div className="ep-page-banner relative overflow-hidden rounded-2xl ep-brand-gradient shadow-lg">
     <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full bg-white/5 pointer-events-none" />
     <div className="absolute -bottom-20 -left-12 w-44 h-44 rounded-full bg-white/5 pointer-events-none" />
 
@@ -54,10 +56,13 @@ const SectionHeader = ({ icon: Icon, title, description }) => (
   </div>
 );
 
-const ToggleSwitch = ({ enabled, onClick }) => (
+const ToggleSwitch = ({ enabled, onClick, disabled }) => (
   <button
     type="button"
     onClick={onClick}
+    disabled={disabled}
+    role="switch"
+    aria-checked={enabled}
     aria-label={
       enabled
         ? 'Disable notification'
@@ -105,38 +110,12 @@ const Settings = () => {
   // =========================
   // NOTIFICATION STATES
   // =========================
-  const defaultNotifications = {
-    applicationStatus: true,
-    scholarshipUpdates: true,
-    entranceExamUpdates: true,
-    announcements: true,
-  };
-
   const [
     showNotificationPreferences,
     setShowNotificationPreferences,
   ] = useState(false);
 
-  const [notifications, setNotifications] =
-    useState(() => {
-      try {
-        const saved = localStorage.getItem(
-          'edupath_admin_notification_preferences'
-        );
-
-        return saved
-          ? {
-              ...defaultNotifications,
-              ...JSON.parse(saved),
-            }
-          : defaultNotifications;
-      } catch {
-        return defaultNotifications;
-      }
-    });
-
-  const [notificationSaved, setNotificationSaved] =
-    useState(false);
+  const { notifications, notificationSaved, setNotificationSaved, notificationError, notificationBusy, handleNotificationChange, handleSaveNotifications, reloadNotifications } = useNotificationPreferences();
 
   // =========================
   // APPEARANCE STATES (shared across all portals)
@@ -330,27 +309,6 @@ const Settings = () => {
   // =========================
   // NOTIFICATION HANDLERS
   // =========================
-  const handleNotificationChange = (key) => {
-    setNotifications((current) => ({
-      ...current,
-      [key]: !current[key],
-    }));
-
-    setNotificationSaved(false);
-  };
-
-  const handleSaveNotifications = () => {
-    localStorage.setItem(
-      'edupath_admin_notification_preferences',
-      JSON.stringify(notifications)
-    );
-
-    setNotificationSaved(true);
-
-    setTimeout(() => {
-      setNotificationSaved(false);
-    }, 3000);
-  };
 
   // =========================
   // APPEARANCE HANDLER
@@ -516,10 +474,12 @@ const Settings = () => {
             )}
 
             {passwordError && (
+              <ErrorMessage message={passwordError}>
               <AlertBox
                 type="error"
                 message={passwordError}
               />
+              </ErrorMessage>
             )}
 
             <form
@@ -629,6 +589,9 @@ const Settings = () => {
 
           <div className="p-6">
 
+            <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">Preferences are saved to your account and control push delivery. In-app records remain available.</p>
+            {notificationError && <ErrorMessage message={notificationError}><div role="alert" className="mb-4 text-sm text-red-700 dark:text-red-300">{notificationError} <button type="button" onClick={reloadNotifications} className="underline">Reload preferences</button></div></ErrorMessage>}
+            {notificationBusy && !notificationError && <p role="status" className="mb-4 text-sm">Loading or saving preferences…</p>}
             {notificationSaved && (
               <AlertBox
                 type="success"
@@ -693,6 +656,7 @@ const Settings = () => {
                     </div>
 
                     <ToggleSwitch
+                      disabled={notificationBusy}
                       enabled={
                         notifications[
                           item.key
@@ -718,6 +682,7 @@ const Settings = () => {
                 onClick={
                   handleSaveNotifications
                 }
+                disabled={notificationBusy}
                 className="inline-flex items-center gap-2 bg-[#123B5D] hover:bg-[#0F3553] dark:bg-blue-600 dark:hover:bg-blue-500 text-white px-5 py-3 rounded-xl font-semibold transition-colors"
               >
                 <Save size={17} />

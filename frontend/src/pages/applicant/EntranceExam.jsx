@@ -1,3 +1,4 @@
+import ErrorMessage from '../../components/ui/ErrorMessage';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ClipboardCheck,
@@ -11,10 +12,13 @@ import {
   RefreshCw,
   Award,
   Info,
+  ShieldCheck,
 } from 'lucide-react';
 
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import api from '../../services/api';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
+import ExamRosterPanel from '../../components/ExamRosterPanel';
 
 const EntranceExam = () => {
   const { token } = useAuth();
@@ -73,13 +77,18 @@ const EntranceExam = () => {
       setRefreshing(false);
     }
   }, [token]);
+  useAutoRefresh(async () => {
+    await loadExams(true);
+  });
 
   // ==========================================
   // INITIAL LOAD
   // ==========================================
 
   useEffect(() => {
-    loadExams();
+    queueMicrotask(() => {
+      loadExams();
+    });
   }, [loadExams]);
 
   // ==========================================
@@ -299,7 +308,7 @@ const EntranceExam = () => {
   return (
     <div className="mx-auto max-w-7xl space-y-7">
       {/* PAGE HEADER */}
-      <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="ep-page-banner rounded-2xl p-6 shadow-lg sm:p-8 flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#123B5D] shadow-sm">
             <ClipboardCheck size={23} className="text-white" />
@@ -311,28 +320,17 @@ const EntranceExam = () => {
             </h1>
 
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 sm:text-base">
-              View your assigned examination schedules and results.
+              View your assigned examination schedules and results. All active required admission documents must be verified before you can take an examination.
             </p>
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => loadExams(true)}
-          disabled={refreshing}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-[#123B5D] shadow-sm transition-colors duration-200 ease-in-out hover:border-[#123B5D]/30 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-[#10263A] dark:text-blue-200 dark:hover:bg-white/5"
-        >
-          <RefreshCw
-            size={17}
-            className={refreshing ? 'animate-spin' : ''}
-          />
-          {refreshing ? 'Refreshing...' : 'Refresh'}
-        </button>
+        
       </div>
 
       {/* ERROR MESSAGE */}
       {error && (
-        <div
+        <ErrorMessage message={error}><div
           role="alert"
           className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-red-700 dark:border-red-400/20 dark:bg-red-500/10 dark:text-red-300"
         >
@@ -354,7 +352,7 @@ const EntranceExam = () => {
               Try again
             </button>
           </div>
-        </div>
+        </div></ErrorMessage>
       )}
 
       {/* SUMMARY */}
@@ -523,23 +521,15 @@ const EntranceExam = () => {
                       </p>
                     </div>
 
-                    {/* ASSIGNMENT REFERENCE */}
-                    <div className="rounded-xl border border-gray-100 bg-gray-50 p-5 dark:border-white/10 dark:bg-white/[0.03]">
-                      <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-                        <FileText size={18} />
 
-                        <p className="text-xs font-bold uppercase tracking-wide">
-                          Assignment Reference
-                        </p>
-                      </div>
-
-                      <p className="mt-2 font-bold text-[#123B5D] dark:text-white">
-                        #{assignment.id}
-                      </p>
-                    </div>
                   </div>
 
                   {/* IMPORTANT INFORMATION */}
+                  {assignment.documents_verified === false ? (
+                    <p role="alert" className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+                      {assignment.eligibility_reason} Your schedule is retained, but you are not yet cleared to take this examination.
+                    </p>
+                  ) : <ExamRosterPanel key={assignment.id} exam={exam} assignmentId={assignment.id} />}
                   <div className="mt-6 rounded-2xl border border-[#123B5D]/10 bg-[#123B5D]/5 p-5 dark:border-blue-400/15 dark:bg-blue-400/5">
                     <div className="flex items-start gap-3">
                       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#123B5D] dark:bg-blue-500">
@@ -586,9 +576,10 @@ const EntranceExam = () => {
                   </div>
 
                   {/* EXAM RESULT */}
-                  {(assignment.score !== null &&
+                  {assignment.entrance_exam?.results_released_at &&
+                  ((assignment.score !== null &&
                     assignment.score !== undefined) ||
-                  assignment.remarks ? (
+                    assignment.remarks) ? (
                     <div className="mt-6 rounded-2xl border border-green-100 bg-green-50/60 p-5 dark:border-green-400/15 dark:bg-green-500/5">
                       <div className="flex items-start gap-3">
                         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-green-600">
@@ -609,11 +600,12 @@ const EntranceExam = () => {
                                   </span>
 
                                   <span className="text-lg font-bold text-green-700 dark:text-green-300">
-                                    {assignment.score}
+                                    {assignment.score} / {exam.maximum_score ?? 100}
                                   </span>
                                 </div>
                               )}
 
+                            {typeof assignment.passed === 'boolean' && <p className="text-sm font-semibold">{assignment.passed ? 'Passed' : 'No passing result'} · Passing score: {exam.passing_score ?? 40}/100</p>}
                             {assignment.remarks && (
                               <div className="rounded-xl border border-green-100 bg-white px-4 py-3 dark:border-green-400/10 dark:bg-[#10263A]">
                                 <p className="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">
@@ -627,6 +619,15 @@ const EntranceExam = () => {
                             )}
                           </div>
                         </div>
+                      </div>
+                    </div>
+                  ) : !assignment.entrance_exam?.results_released_at &&
+                  (assignment.status?.toLowerCase() === 'completed' || assignment.status?.toLowerCase() === 'absent') ? (
+                    <div className="mt-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-400/20 dark:bg-amber-500/5">
+                      <ShieldCheck size={19} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" />
+                      <div>
+                        <h3 className="font-semibold text-amber-900 dark:text-amber-200">Results Pending Official Release</h3>
+                        <p className="mt-1 text-sm leading-relaxed text-amber-800 dark:text-amber-100/80">Your examination status has been recorded. Your score and remarks will appear here after the college officially releases the results.</p>
                       </div>
                     </div>
                   ) : null}

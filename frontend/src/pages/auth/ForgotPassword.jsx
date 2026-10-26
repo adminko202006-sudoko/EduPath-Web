@@ -1,5 +1,6 @@
+import ErrorMessage from '../../components/ui/ErrorMessage';
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import {
   Mail,
@@ -11,12 +12,13 @@ import {
 } from 'lucide-react';
 
 import api from '../../services/api';
-import tmcLogo from '../../assets/tmcLogo.jpg';
+import TmcLogo from '../../components/TmcLogo';
 
 const ForgotPassword = () => {
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(location.state?.email || '');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -412,15 +414,7 @@ const ForgotPassword = () => {
                 {/* Logo glow */}
                 <div className="absolute inset-0 rounded-full bg-[#F4B400]/20 blur-2xl scale-110" />
 
-                <div className="relative w-24 h-24 rounded-full bg-white p-1.5 shadow-[0_12px_35px_rgba(18,59,93,0.18)] ring-2 ring-[#F4B400]/70">
-
-                  <img
-                    src={tmcLogo}
-                    alt="Trinidad Municipal College Logo"
-                    className="w-full h-full object-contain rounded-full"
-                  />
-
-                </div>
+                <TmcLogo className="h-24 w-24 shadow-[0_12px_35px_rgba(18,59,93,0.18)] ring-2 ring-[#F4B400]/70" />
 
               </div>
 
@@ -518,6 +512,9 @@ const ForgotPassword = () => {
                   EduPath account and we'll send you a verification
                   code to reset your password.
                 </p>
+                <p className="mt-3 text-xs leading-relaxed text-gray-500">
+                  Available for Applicant, Staff, and Administrator accounts. If you cannot access your registered email, contact the TMC administrator for identity verification. Staff account activation and permissions remain managed by Admin.
+                </p>
 
               </div>
 
@@ -545,7 +542,7 @@ const ForgotPassword = () => {
                   ERROR MESSAGE
               ================================================== */}
               {error && (
-                <div className="mb-5 flex items-start gap-3 rounded-2xl bg-red-50 border border-red-200 px-4 py-3.5 shadow-sm">
+                <ErrorMessage message={error}><div className="mb-5 flex items-start gap-3 rounded-2xl bg-red-50 border border-red-200 px-4 py-3.5 shadow-sm">
 
                   <AlertCircle
                     size={20}
@@ -556,7 +553,7 @@ const ForgotPassword = () => {
                     {error}
                   </p>
 
-                </div>
+                </div></ErrorMessage>
               )}
 
 

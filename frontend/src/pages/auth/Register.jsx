@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react';
+import RegistrationAddress from '../../components/forms/RegistrationAddress';
+import StudentIdentityFields from '../../components/forms/StudentIdentityFields';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import {
   UserRound,
   Mail,
@@ -11,7 +14,6 @@ import {
   CheckCircle2,
   CalendarDays,
   Phone,
-  MapPin,
   VenusAndMars,
   ArrowLeft,
   Sparkles,
@@ -32,11 +34,17 @@ const Register = () => {
     email: '',
     password: '',
     password_confirmation: '',
+    student_type: '', lrn: '', tmc_student_number: '', previous_school: '', school_id: null,
   });
 
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const submitting = useRef(false);
+  const navigationTimer = useRef(null);
+  const today = new Date().toLocaleDateString('en-CA');
+
+  useEffect(() => () => clearTimeout(navigationTimer.current), []);
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -71,22 +79,25 @@ const Register = () => {
   const handleBackToLogin = (e) => {
     e.preventDefault();
 
-    if (loading || isReturning) return;
+    if (submitting.current || loading || isReturning) return;
 
     setIsReturning(true);
 
-    setTimeout(() => {
+    navigationTimer.current = setTimeout(() => {
       navigate('/login');
     }, 850);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submitting.current || isReturning) return;
 
     setError('');
     setSuccess('');
-    setLoading(true);
-
+    if (!formData.address_components?.country_code || !formData.address_components?.city?.trim() || !formData.address_components?.street?.trim()) {
+      setError('Please complete your country, province/region and city selections, then enter your household/street details.');
+      return;
+    }
     if (formData.password.length < 8) {
       setError('Password must be at least 8 characters.');
       setLoading(false);
@@ -102,22 +113,20 @@ const Register = () => {
       return;
     }
 
+    submitting.current = true;
+    setLoading(true);
     try {
       await register(formData);
 
       setSuccess(
-        'Account created successfully. Redirecting to login...'
+        'Account created. Continue with email verification and school-ID review...'
       );
-
-      setTimeout(() => {
-        setIsReturning(true);
-
-        setTimeout(() => {
-          navigate('/login');
-        }, 850);
+      navigationTimer.current = setTimeout(() => {
+        navigate('/applicant/verification', { replace: true });
       }, 500);
     } catch (error) {
-      console.error('Registration error:', error);
+      submitting.current = false;
+      setLoading(false);
 
       if (error.response?.data?.errors) {
         const errors = error.response.data.errors;
@@ -129,15 +138,17 @@ const Register = () => {
             ? firstError[0]
             : 'Please check your information.'
         );
+      } else if (error.response?.status === 429) {
+        setError('Too many registration attempts. Please wait a few minutes before trying again.');
+      } else if (error.response?.status >= 500) {
+        setError('Registration is temporarily unavailable. Please try again later.');
       } else if (error.response?.data?.message) {
         setError(error.response.data.message);
       } else {
         setError(
-          'Unable to create account. Please try again.'
+          'Unable to confirm registration. Check your connection. If you already submitted this form, try signing in before registering again.'
         );
       }
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -153,6 +164,26 @@ const Register = () => {
           overflow: hidden;
           min-height: 100vh;
           isolation: isolate;
+          background-color: #123B5D;
+        }
+
+        .edupath-register-campus {
+          position: fixed;
+          inset: 0;
+          z-index: 0;
+          pointer-events: none;
+          background-image:
+            linear-gradient(180deg, rgba(7, 26, 43, 0.48), rgba(7, 26, 43, 0.64)),
+            url('/TrinidadMunicipalCollege.png');
+          background-size: cover;
+          background-position: center;
+          background-repeat: no-repeat;
+        }
+
+        .dark .edupath-register-campus {
+          background-image:
+            linear-gradient(180deg, rgba(4, 17, 29, 0.62), rgba(4, 17, 29, 0.78)),
+            url('/TrinidadMunicipalCollege.png');
         }
 
         .edupath-register-content {
@@ -160,7 +191,7 @@ const Register = () => {
           z-index: 20;
           transform: translateY(0) scale(1);
           opacity: 1;
-          filter: blur(0);
+          filter: none;
           transition:
             transform 850ms cubic-bezier(0.76, 0, 0.24, 1),
             opacity 650ms ease,
@@ -437,6 +468,7 @@ const Register = () => {
         .edupath-register-header {
           transform: translateY(0) scale(1);
           opacity: 1;
+          text-shadow: 0 2px 12px rgba(4, 17, 29, 0.6);
           transition:
             transform 850ms cubic-bezier(0.76, 0, 0.24, 1),
             opacity 600ms ease;
@@ -457,11 +489,56 @@ const Register = () => {
         /* Card */
 
         .edupath-register-card {
+          background: linear-gradient(135deg, rgba(255, 255, 255, 0.86), rgba(244, 247, 250, 0.74));
+          border: 1px solid rgba(255, 255, 255, 0.66);
+          box-shadow:
+            0 24px 70px rgba(4, 17, 29, 0.28),
+            inset 0 1px 0 rgba(255, 255, 255, 0.8);
+          -webkit-backdrop-filter: blur(22px) saturate(135%);
+          backdrop-filter: blur(22px) saturate(135%);
           transform-origin: center;
           transition:
             transform 850ms cubic-bezier(0.76, 0, 0.24, 1),
             opacity 650ms ease,
             filter 650ms ease;
+        }
+
+        .dark .edupath-register-card {
+          background: linear-gradient(135deg, rgba(13, 36, 53, 0.88), rgba(7, 26, 43, 0.76));
+          border-color: rgba(255, 255, 255, 0.22);
+          box-shadow:
+            0 24px 70px rgba(0, 0, 0, 0.4),
+            inset 0 1px 0 rgba(255, 255, 255, 0.12);
+        }
+
+        .edupath-register-card :is(input, select, textarea) {
+          background-color: rgba(255, 255, 255, 0.68);
+          border-color: rgba(18, 59, 93, 0.18);
+        }
+
+        .edupath-register-card :is(input, select, textarea):focus {
+          background-color: rgba(255, 255, 255, 0.94);
+        }
+
+        .edupath-register-card .text-gray-500 { color: #475569; }
+
+        .edupath-register-card :is(input, textarea)::placeholder { color: #596B80; }
+
+        /* Keep the glass tint above legacy global dark input utility overrides. */
+        .dark .edupath-register-card :is(input, select, textarea) {
+          background-color: rgba(7, 26, 43, 0.64) !important;
+          border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .dark .edupath-register-card :is(input, select, textarea):focus {
+          background-color: rgba(13, 36, 53, 0.94) !important;
+        }
+
+        .dark .edupath-register-card :is(input, textarea)::placeholder { color: #B7C8D7; }
+
+        @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+          .edupath-register-card { background: rgba(244, 247, 250, 0.97); }
+          .dark .edupath-register-card { background: rgba(13, 36, 53, 0.97); }
         }
 
         .edupath-register-page.edupath-entering
@@ -542,8 +619,6 @@ const Register = () => {
         className={`
           edupath-register-page
           min-h-screen
-          bg-[#F4F7FA]
-          dark:bg-[#071521]
           flex
           items-center
           justify-center
@@ -563,6 +638,8 @@ const Register = () => {
           }
         `}
       >
+        <div className="edupath-register-campus" aria-hidden="true" />
+
         {/* Transformation Effects */}
 
         <div className="edupath-register-beam" />
@@ -591,15 +668,15 @@ const Register = () => {
               <GraduationCapIcon />
             </div>
 
-            <h1 className="text-4xl font-bold text-[#123B5D] dark:text-white">
+            <h1 className="text-4xl font-bold text-white">
               EduPath
             </h1>
 
-            <p className="text-gray-600 dark:text-gray-300 mt-2">
+            <p className="text-white mt-2">
               Trinidad Municipal College
             </p>
 
-            <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
+            <p className="text-white/85 text-sm mt-1">
               Admission and Scholarship Management System
             </p>
           </div>
@@ -609,13 +686,7 @@ const Register = () => {
           <div
             className="
               edupath-register-card
-              bg-white
-              dark:bg-[#0D2435]
               rounded-2xl
-              shadow-md
-              border
-              border-gray-100
-              dark:border-gray-700
               p-6
               sm:p-8
               lg:p-10
@@ -644,7 +715,7 @@ const Register = () => {
             {/* Error */}
 
             {error && (
-              <div className="mb-6 flex items-start gap-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+              <ErrorMessage message={error}><div className="mb-6 flex items-start gap-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 px-4 py-3 text-sm text-red-700 dark:text-red-300">
                 <AlertCircle
                   size={19}
                   className="mt-0.5 shrink-0"
@@ -659,7 +730,7 @@ const Register = () => {
                     {error}
                   </p>
                 </div>
-              </div>
+              </div></ErrorMessage>
             )}
 
             {/* Success */}
@@ -684,6 +755,8 @@ const Register = () => {
             )}
 
             <form onSubmit={handleSubmit}>
+              <fieldset disabled={loading || isReturning} className="min-w-0">
+              <div className="mb-8 text-slate-800 dark:text-slate-100"><StudentIdentityFields value={formData} onChange={setFormData} disabled={loading} /></div>
 
               {/* Personal Information */}
 
@@ -804,6 +877,7 @@ const Register = () => {
                         type="date"
                         id="birth_date"
                         name="birth_date"
+                        max={today}
                         value={formData.birth_date}
                         onChange={handleChange}
                         required
@@ -911,35 +985,7 @@ const Register = () => {
                   </div>
                 </div>
 
-                {/* Address */}
-
-                <div>
-                  <label
-                    htmlFor="address"
-                    className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2"
-                  >
-                    Complete Address
-                  </label>
-
-                  <div className="relative">
-                    <MapPin
-                      size={18}
-                      className="absolute left-4 top-4 text-gray-400"
-                    />
-
-                    <textarea
-                      id="address"
-                      name="address"
-                      value={formData.address}
-                      onChange={handleChange}
-                      placeholder="House/Street, Barangay, Municipality/City, Province"
-                      required
-                      rows="3"
-                      autoComplete="street-address"
-                      className="edupath-register-interactive w-full pl-11 pr-4 py-3 border border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-[#102A3D] text-gray-800 dark:text-white placeholder-gray-400 focus:bg-white dark:focus:bg-[#14354B] focus:outline-none focus:ring-2 focus:ring-[#123B5D]/20 dark:focus:ring-[#14B8A6]/20 focus:border-[#123B5D] dark:focus:border-[#14B8A6] transition resize-none"
-                    />
-                  </div>
-                </div>
+                <RegistrationAddress disabled={loading} onChange={(address) => setFormData((current) => ({ ...current, ...address }))} />
 
               </div>
 
@@ -1156,10 +1202,9 @@ const Register = () => {
                     <span className="font-bold">
                       Applicant Account:
                     </span>{' '}
-                    This registration is for incoming students
-                    applying for admission and scholarships at
-                    Trinidad Municipal College. Applicant accounts
-                    are automatically created with the Applicant role.
+                    New students, old students and transferees use an Applicant account.
+                    You can browse after registration. Verify your email and obtain administrator
+                    approval of your school identity before applying for admission or scholarships.
                   </p>
                 </div>
               </div>
@@ -1187,6 +1232,7 @@ const Register = () => {
                 )}
               </button>
 
+              </fieldset>
             </form>
 
             {/* Back to Login */}
@@ -1229,7 +1275,7 @@ const Register = () => {
 
           {/* Footer */}
 
-          <p className="text-center text-gray-400 dark:text-gray-500 text-xs mt-6">
+          <p className="text-center text-white/85 text-xs mt-6">
             © 2026 Trinidad Municipal College
           </p>
 

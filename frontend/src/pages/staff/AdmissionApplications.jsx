@@ -1,36 +1,28 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import ErrorMessage from '../../components/ui/ErrorMessage';
 
-import {
-  Search,
-  Eye,
-  CheckCircle,
-  XCircle,
-  FileText,
-  RefreshCw,
-  ClipboardList,
-  UserRound,
-  CalendarDays,
-  Filter,
-  GraduationCap,
-  X,
-  History,
-  Clock3,
-} from 'lucide-react';
+import { Search, Eye, CheckCircle, XCircle, FileText, ClipboardList, UserRound, CalendarDays, Filter, GraduationCap, X, History, Clock3 } from 'lucide-react';
 
 import api from '../../services/api';
-import { useConfirmDialog, ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import ApplicantApplicationGroups from '../../components/ApplicantApplicationGroups';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
+import { ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import { useConfirmDialog } from '../../components/ui/useConfirmDialog';
 import ModalPortal from '../../components/ui/ModalPortal';
 
 const AdmissionApplications = ({ confirm }) => {
   const [applications, setApplications] = useState([]);
   const [search, setSearch] = useState('');
+  // Search is submitted explicitly; typing alone must not reload the queue.
+  const searchInputRef = useRef('');
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [, setRefreshing] = useState(false);
   const [message, setMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
   const [selectedApplication, setSelectedApplication] = useState(null);
 
-  const fetchApplications = async (isRefresh = false) => {
+  const fetchApplications = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) {
         setRefreshing(true);
@@ -39,10 +31,11 @@ const AdmissionApplications = ({ confirm }) => {
       }
 
       setMessage('');
+      setErrorMessage('');
 
       const response = await api.get('/staff/admission-applications', {
         params: {
-          search: search || undefined,
+          search: searchInputRef.current || undefined,
           status: status || undefined,
         },
       });
@@ -51,7 +44,7 @@ const AdmissionApplications = ({ confirm }) => {
     } catch (error) {
       console.error('Fetch admission applications error:', error);
 
-      setMessage(
+      setErrorMessage(
         error.response?.data?.message ||
           'Unable to load admission applications.'
       );
@@ -61,13 +54,19 @@ const AdmissionApplications = ({ confirm }) => {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [status]);
+  useAutoRefresh(async () => {
+    await fetchApplications(true);
+  });
 
   useEffect(() => {
-    fetchApplications();
-  }, [status]);
+    queueMicrotask(() => {
+      fetchApplications();
+    });
+  }, [status, fetchApplications]);
 
   const handleSearch = (event) => {
+    searchInputRef.current = event.target.value;
     setSearch(event.target.value);
   };
 
@@ -76,11 +75,10 @@ const AdmissionApplications = ({ confirm }) => {
     fetchApplications();
   };
 
-  const handleRefresh = () => {
-    fetchApplications(true);
-  };
+  
 
   const handleApprove = async (id) => {
+    setErrorMessage('');
     const confirmed = await confirm({
       title: 'Approve Application',
       message: 'Are you sure you want to approve this admission application?',
@@ -104,7 +102,7 @@ const AdmissionApplications = ({ confirm }) => {
     } catch (error) {
       console.error('Approve application error:', error);
 
-      setMessage(
+      setErrorMessage(
         error.response?.data?.message ||
           'Failed to approve application.'
       );
@@ -112,6 +110,7 @@ const AdmissionApplications = ({ confirm }) => {
   };
 
   const handleReject = async (id) => {
+    setErrorMessage('');
     const remarks = window.prompt(
       'Enter the reason for rejecting this application:'
     );
@@ -137,7 +136,7 @@ const AdmissionApplications = ({ confirm }) => {
     } catch (error) {
       console.error('Reject application error:', error);
 
-      setMessage(
+      setErrorMessage(
         error.response?.data?.message ||
           'Failed to reject application.'
       );
@@ -253,6 +252,15 @@ const AdmissionApplications = ({ confirm }) => {
           iconClass: 'text-amber-600 dark:text-amber-300',
         };
 
+      case 'withdrawn':
+        return {
+          label: 'Withdrawn',
+          className:
+            'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700',
+          dotClass: 'bg-gray-400',
+          iconClass: 'text-gray-500 dark:text-gray-300',
+        };
+
       case 'pending':
       default:
         return {
@@ -306,6 +314,16 @@ const AdmissionApplications = ({ confirm }) => {
             'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300',
           iconClass: 'bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-300',
           icon: ClipboardList,
+        };
+
+      case 'withdrawn':
+        return {
+          label: 'Application Withdrawn',
+          className:
+            'bg-gray-50 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+          iconClass:
+            'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300',
+          icon: History,
         };
 
       default:
@@ -449,7 +467,7 @@ const AdmissionApplications = ({ confirm }) => {
     <div className="min-h-screen bg-[#f4f7fa] dark:bg-gray-950 p-4 sm:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto">
 
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5 mb-7">
+        <div className="ep-page-banner rounded-2xl p-6 shadow-lg sm:p-8 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5 mb-7">
           <div>
             <div className="flex items-center gap-3">
               <div className="w-11 h-11 rounded-xl bg-[#123B5D] flex items-center justify-center shadow-md">
@@ -471,19 +489,7 @@ const AdmissionApplications = ({ confirm }) => {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-medium shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition disabled:opacity-60"
-          >
-            <RefreshCw
-              size={17}
-              className={refreshing ? 'animate-spin' : ''}
-            />
-
-            {refreshing ? 'Refreshing...' : 'Refresh'}
-          </button>
+          
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
@@ -573,6 +579,7 @@ const AdmissionApplications = ({ confirm }) => {
           </div>
         </div>
 
+        {errorMessage && <ErrorMessage message={errorMessage}><p>{errorMessage}</p></ErrorMessage>}
         {message && (
           <div className="mb-6 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-900/20 px-4 py-3">
             <p className="text-sm font-medium text-blue-700 dark:text-blue-300">
@@ -631,11 +638,14 @@ const AdmissionApplications = ({ confirm }) => {
                 </option>
                 <option value="approved">Approved</option>
                 <option value="rejected">Rejected</option>
+                <option value="withdrawn">Withdrawn</option>
               </select>
             </div>
           </div>
         </div>
 
+        <ApplicantApplicationGroups applications={loading ? [] : filteredApplications}>
+          {(groupApplications) => (<>
         <div className="hidden md:block bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
 
           <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800">
@@ -648,8 +658,8 @@ const AdmissionApplications = ({ confirm }) => {
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   {loading
                     ? 'Loading applications...'
-                    : `${filteredApplications.length} application${
-                        filteredApplications.length === 1
+                    : `${groupApplications.length} application${
+                        groupApplications.length === 1
                           ? ''
                           : 's'
                       } found`}
@@ -687,7 +697,7 @@ const AdmissionApplications = ({ confirm }) => {
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                 {loading ? (
                   renderSkeletonRows()
-                ) : filteredApplications.length === 0 ? (
+                ) : groupApplications.length === 0 ? (
                   <tr>
                     <td colSpan="5" className="px-5 py-16">
                       <div className="text-center">
@@ -709,7 +719,7 @@ const AdmissionApplications = ({ confirm }) => {
                     </td>
                   </tr>
                 ) : (
-                  filteredApplications.map((application) => {
+                  groupApplications.map((application) => {
                     const statusConfig =
                       getStatusConfig(application.status);
 
@@ -880,7 +890,7 @@ const AdmissionApplications = ({ confirm }) => {
                 <div className="mt-5 h-9 w-full bg-gray-200 dark:bg-gray-700 rounded-lg" />
               </div>
             ))
-          ) : filteredApplications.length === 0 ? (
+          ) : groupApplications.length === 0 ? (
             <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm p-10 text-center">
               <div className="w-14 h-14 mx-auto rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4">
                 <ClipboardList
@@ -898,7 +908,7 @@ const AdmissionApplications = ({ confirm }) => {
               </p>
             </div>
           ) : (
-            filteredApplications.map((application) => {
+            groupApplications.map((application) => {
               const statusConfig =
                 getStatusConfig(application.status);
 
@@ -1033,6 +1043,8 @@ const AdmissionApplications = ({ confirm }) => {
             })
           )}
         </div>
+          </>)}
+        </ApplicantApplicationGroups>
       </div>
 
       {selectedApplication && (

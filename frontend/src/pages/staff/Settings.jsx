@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import useNotificationPreferences from '../../hooks/useNotificationPreferences';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
-import { useAuth } from '../../context/AuthContext';
-import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/useAuth';
+import { useTheme } from '../../context/useTheme';
 
 import {
   User,
@@ -77,10 +79,14 @@ const PasswordToggle = ({
 const ToggleSwitch = ({
   enabled,
   onClick,
+  disabled,
 }) => (
   <button
     type="button"
     onClick={onClick}
+    disabled={disabled}
+    role="switch"
+    aria-checked={enabled}
     aria-label={
       enabled
         ? 'Disable notification'
@@ -162,38 +168,12 @@ const StaffSettings = () => {
   // =========================
   // NOTIFICATION STATES
   // =========================
-  const defaultNotifications = {
-    applicationUpdates: true,
-    documentUpdates: true,
-    entranceExamUpdates: true,
-    announcements: true,
-  };
-
   const [
     showNotificationPreferences,
     setShowNotificationPreferences,
   ] = useState(false);
 
-  const [notifications, setNotifications] =
-    useState(() => {
-      try {
-        const saved = localStorage.getItem(
-          'edupath_staff_notification_preferences'
-        );
-
-        return saved
-          ? {
-              ...defaultNotifications,
-              ...JSON.parse(saved),
-            }
-          : defaultNotifications;
-      } catch {
-        return defaultNotifications;
-      }
-    });
-
-  const [notificationSaved, setNotificationSaved] =
-    useState(false);
+  const { notifications, notificationSaved, setNotificationSaved, notificationError, notificationBusy, handleNotificationChange, handleSaveNotifications, reloadNotifications } = useNotificationPreferences();
 
   // =========================
   // APPEARANCE STATES (shared across all portals)
@@ -414,27 +394,6 @@ const StaffSettings = () => {
   // =========================
   // NOTIFICATION HANDLERS
   // =========================
-  const handleNotificationChange = (key) => {
-    setNotifications((current) => ({
-      ...current,
-      [key]: !current[key],
-    }));
-
-    setNotificationSaved(false);
-  };
-
-  const handleSaveNotifications = () => {
-    localStorage.setItem(
-      'edupath_staff_notification_preferences',
-      JSON.stringify(notifications)
-    );
-
-    setNotificationSaved(true);
-
-    setTimeout(() => {
-      setNotificationSaved(false);
-    }, 3000);
-  };
 
   // =========================
   // LOGOUT
@@ -461,7 +420,7 @@ const StaffSettings = () => {
           HERO
       ========================= */}
       <section
-        className="
+        className="ep-page-banner 
           relative
           overflow-hidden
           rounded-2xl
@@ -1668,7 +1627,7 @@ const StaffSettings = () => {
 
 
           {passwordError && (
-            <div
+            <ErrorMessage message={passwordError}><div
               className="
                 mb-5
                 flex
@@ -1693,7 +1652,7 @@ const StaffSettings = () => {
               />
 
               {passwordError}
-            </div>
+            </div></ErrorMessage>
           )}
 
 
@@ -2117,7 +2076,10 @@ const StaffSettings = () => {
           </div>
 
 
-          {notificationSaved && (
+          <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">Preferences are saved to your account and control push delivery. In-app records remain available.</p>
+            {notificationError && <ErrorMessage message={notificationError}><div role="alert" className="mb-4 text-sm text-red-700 dark:text-red-300">{notificationError} <button type="button" onClick={reloadNotifications} className="underline">Reload preferences</button></div></ErrorMessage>}
+            {notificationBusy && !notificationError && <p role="status" className="mb-4 text-sm">Loading or saving preferences…</p>}
+            {notificationSaved && (
             <div
               className="
                 mb-5
@@ -2242,6 +2204,7 @@ const StaffSettings = () => {
                   </div>
 
                   <ToggleSwitch
+                      disabled={notificationBusy}
                     enabled={
                       notifications[
                         item.key
@@ -2273,6 +2236,7 @@ const StaffSettings = () => {
               onClick={
                 handleSaveNotifications
               }
+                disabled={notificationBusy}
               className="
                 flex
                 items-center

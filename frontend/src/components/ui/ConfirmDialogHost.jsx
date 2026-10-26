@@ -1,4 +1,1 @@
-export {
-  useConfirmDialog,
-  ConfirmDialogHost,
-} from './ConfirmDialog';
+export { ConfirmDialogHost } from './ConfirmDialog';

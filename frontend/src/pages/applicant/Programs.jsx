@@ -1,31 +1,25 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import api from '../../services/api';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 import { EmptyState, ErrorState } from '../../components/ui/Shared';
 
-import {
-  BookOpen,
-  GraduationCap,
-  CheckCircle2,
-  Search,
-  ArrowRight,
-  RefreshCw,
-} from 'lucide-react';
+import { BookOpen, GraduationCap, CheckCircle2, Search, ArrowRight } from 'lucide-react';
 
 const Programs = () => {
-  const { token } = useAuth();
+  const { token, verification } = useAuth();
 
   const [programs, setPrograms] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
 
   /* ==========================================
      LOAD PROGRAMS
   ========================================== */
-  const loadPrograms = async (isRefresh = false) => {
+  const loadPrograms = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) {
         setRefreshing(true);
@@ -52,13 +46,18 @@ const Programs = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [token]);
+  useAutoRefresh(async () => {
+    await loadPrograms(true);
+  });
 
   useEffect(() => {
     if (token) {
-      loadPrograms();
+      queueMicrotask(() => {
+        loadPrograms();
+      });
     }
-  }, [token]);
+  }, [token, loadPrograms]);
 
   /* ==========================================
      FILTER PROGRAMS
@@ -77,6 +76,9 @@ const Programs = () => {
   /* ==========================================
      SKELETON LOADING
   ========================================== */
+  if (verification?.identity?.student_type === 'old') {
+    return <section className="ep-card space-y-3 rounded-2xl p-6"><h1 className="text-2xl font-bold text-[#123B5D] dark:text-white">My Program</h1><p>{verification.identity.academic_program?.name || 'Your existing TMC program is awaiting administrator confirmation.'}</p><p className="text-sm">Old students use their existing program for scholarship applications. Contact the college if your program record needs correction.</p><Link className="inline-block font-semibold underline" to="/applicant/verification">View verification status</Link></section>;
+  }
   if (loading) {
     return (
       <div className="space-y-6 page-transition">
@@ -121,7 +123,7 @@ const Programs = () => {
       {/* =====================================================
           HERO BANNER
       ====================================================== */}
-      <section className="ep-brand-gradient relative overflow-hidden rounded-2xl p-6 sm:p-8 shadow-lg text-white">
+      <section className="ep-page-banner ep-brand-gradient relative overflow-hidden rounded-2xl p-6 sm:p-8 shadow-lg text-white">
         <div className="absolute -right-20 -top-20 h-56 w-56 rounded-full bg-teal-300/10 blur-2xl pointer-events-none" />
         <div className="absolute -bottom-24 left-1/3 h-52 w-52 rounded-full bg-amber-300/10 blur-2xl pointer-events-none" />
         <div className="absolute right-1/4 top-1/2 h-24 w-24 rounded-full bg-white/5 blur-xl pointer-events-none" />
@@ -133,7 +135,7 @@ const Programs = () => {
               <span>Trinidad Municipal College • Academic Offerings</span>
             </div>
 
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight">
+            <h1 data-tutorial-target="applicant-programs-intro" className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight">
               Academic Programs
             </h1>
 
@@ -143,15 +145,7 @@ const Programs = () => {
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => loadPrograms(true)}
-            disabled={refreshing}
-            className="self-start lg:self-center inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white shadow-md ring-1 ring-white/20 transition hover:bg-white/20 disabled:opacity-50"
-          >
-            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-            <span>{refreshing ? 'Refreshing...' : 'Refresh List'}</span>
-          </button>
+          
         </div>
       </section>
 

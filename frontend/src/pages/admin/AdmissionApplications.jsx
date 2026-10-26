@@ -1,44 +1,50 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 
-import {
-  Search,
-  FileText,
-  Clock,
-  CheckCircle,
-  XCircle,
-  Eye,
-  RefreshCw,
-  AlertCircle,
-  ClipboardList,
-  GraduationCap,
-  CalendarDays,
-  Filter,
-  X,
-  Loader2,
-  ShieldCheck,
-} from 'lucide-react';
+import { Search, FileText, Clock, CheckCircle, XCircle, Eye, AlertCircle, ClipboardList, GraduationCap, CalendarDays, Filter, X, Loader2, ShieldCheck, Plus, Pencil, Trash2 } from 'lucide-react';
 
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import api from '../../services/api';
+import ApplicantApplicationGroups from '../../components/ApplicantApplicationGroups';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
+import { ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import { useConfirmDialog } from '../../components/ui/useConfirmDialog';
+import ModalPortal from '../../components/ui/ModalPortal';
+import { LoadingState } from '../../components/ui/Shared';
 
-const AdmissionApplications = () => {
+const AdmissionApplicationDetails = lazy(() => import('./AdmissionApplicationDetails'));
+
+const AdmissionApplications = ({ confirm }) => {
   const { token } = useAuth();
-  const navigate = useNavigate();
 
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [, setRefreshing] = useState(false);
 
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
+  const [editor, setEditor] = useState(null);
+  const [applicants, setApplicants] = useState([]);
+  const [programs, setPrograms] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [editorError, setEditorError] = useState('');
+  const [selectedApplication, setSelectedApplication] = useState(null);
+  const [detailsBusy, setDetailsBusy] = useState(false);
+  const detailsBusyRef = useRef(false);
+  const closeDetails = useCallback(() => {
+    if (!detailsBusyRef.current) setSelectedApplication(null);
+  }, []);
+  const handleDetailsBusy = useCallback((busy) => {
+    detailsBusyRef.current = busy;
+    setDetailsBusy(busy);
+  }, []);
 
   // ==========================================
   // LOAD APPLICATIONS
   // ==========================================
 
-  const loadApplications = async (showRefresh = false) => {
+  const loadApplications = useCallback(async (showRefresh = false) => {
     try {
       setError('');
 
@@ -78,7 +84,82 @@ const AdmissionApplications = () => {
       setLoading(false);
       setRefreshing(false);
     }
+  }, [token]);
+
+  const openEditor = async (application = null) => {
+    setEditorError('');
+    try {
+      const [applicantResponse, programResponse] = await Promise.all([
+        api.get('/admin/applicants', { headers: { Authorization: `Bearer ${token}` } }),
+        api.get('/admin/programs', { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+      const applicantData = applicantResponse.data?.data ?? applicantResponse.data;
+      const programData = programResponse.data?.data ?? programResponse.data;
+      setApplicants(Array.isArray(applicantData) ? applicantData : []);
+      setPrograms(Array.isArray(programData) ? programData : []);
+      setEditor({
+        application,
+        applicant_id: application?.applicant_id ?? '',
+        academic_program_id: application?.academic_program_id ?? '',
+        remarks: application?.remarks ?? '',
+      });
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Unable to load applicants and programs.');
+    }
   };
+
+  const saveApplication = async (event) => {
+    event.preventDefault();
+    if (!editor || saving) return;
+    setSaving(true);
+    setEditorError('');
+    try {
+      const payload = {
+        academic_program_id: Number(editor.academic_program_id),
+        remarks: editor.remarks || null,
+      };
+      if (editor.application) {
+        await api.put(`/admin/admission-applications/${editor.application.id}`, payload, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } else {
+        await api.post('/admin/admission-applications', {
+          ...payload,
+          applicant_id: Number(editor.applicant_id),
+        }, { headers: { Authorization: `Bearer ${token}` } });
+      }
+      setEditor(null);
+      await loadApplications(true);
+    } catch (requestError) {
+      const validation = requestError.response?.data?.errors;
+      setEditorError(
+        Object.values(validation || {}).flat()[0] ||
+        requestError.response?.data?.message || 'Unable to save this application.'
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const withdrawApplication = async (application) => {
+    const approved = await confirm({
+      title: 'Withdraw application?',
+      message: 'This removes the application from active review. Its record, documents, and history will be retained.',
+      confirmLabel: 'Withdraw application',
+    });
+    if (!approved) return;
+    try {
+      await api.delete(`/admin/admission-applications/${application.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      await loadApplications(true);
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Unable to withdraw this application.');
+    }
+  };
+  useAutoRefresh(async () => {
+    await loadApplications(true);
+  });
 
   // ==========================================
   // INITIAL LOAD
@@ -89,8 +170,10 @@ const AdmissionApplications = () => {
       return;
     }
 
-    loadApplications();
-  }, [token]);
+    queueMicrotask(() => {
+      loadApplications();
+    });
+  }, [token, loadApplications]);
 
   // ==========================================
   // FORMAT NAME
@@ -219,6 +302,14 @@ const AdmissionApplications = () => {
           label: 'Rejected',
           className:
             'border-red-100 bg-red-50 text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300',
+          icon: XCircle,
+        };
+
+      case 'withdrawn':
+        return {
+          label: 'Withdrawn',
+          className:
+            'border-gray-200 bg-gray-50 text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300',
           icon: XCircle,
         };
 
@@ -430,7 +521,7 @@ const AdmissionApplications = () => {
           HERO
       ========================================== */}
 
-      <section className="ep-brand-gradient relative overflow-hidden rounded-2xl p-6 shadow-lg sm:p-8">
+      <section className="ep-page-banner ep-brand-gradient relative overflow-hidden rounded-2xl p-6 shadow-lg sm:p-8">
 
         <div className="absolute -right-20 -top-20 h-56 w-56 rounded-full bg-teal-300/10 blur-2xl" />
 
@@ -460,28 +551,16 @@ const AdmissionApplications = () => {
 
           </div>
 
+          <div className="flex flex-wrap gap-3">
           <button
             type="button"
-            onClick={() =>
-              loadApplications(true)
-            }
-            disabled={refreshing}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-white/10 px-5 py-3 font-semibold text-white shadow-lg ring-1 ring-white/20 transition-colors duration-200  hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={() => openEditor()}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#F4B400] px-5 py-3 font-semibold text-[#0B2941] shadow-lg transition-colors hover:bg-amber-300"
           >
-
-            <RefreshCw
-              className={`h-5 w-5 ${
-                refreshing
-                  ? 'animate-spin'
-                  : ''
-              }`}
-            />
-
-            {refreshing
-              ? 'Refreshing...'
-              : 'Refresh Applications'}
-
+            <Plus className="h-5 w-5" /> Create application
           </button>
+          
+          </div>
 
         </div>
 
@@ -492,7 +571,7 @@ const AdmissionApplications = () => {
       ========================================== */}
 
       {error && (
-        <div className="animate-fade-up flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700 shadow-sm dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+        <ErrorMessage message={error}><div className="animate-fade-up flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700 shadow-sm dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
 
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-100 dark:bg-red-950/50">
 
@@ -512,7 +591,7 @@ const AdmissionApplications = () => {
 
           </div>
 
-        </div>
+        </div></ErrorMessage>
       )}
 
       {/* ==========================================
@@ -665,6 +744,10 @@ const AdmissionApplications = () => {
                 Rejected
               </option>
 
+              <option value="withdrawn">
+                Withdrawn
+              </option>
+
             </select>
 
           </div>
@@ -775,6 +858,8 @@ const AdmissionApplications = () => {
              TABLE
           ========================================== */
 
+          <ApplicantApplicationGroups applications={filteredApplications}>
+            {(groupApplications) => (
           <div className="overflow-x-auto">
 
             <table className="w-full min-w-[950px]">
@@ -809,7 +894,7 @@ const AdmissionApplications = () => {
 
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
 
-                {filteredApplications.map(
+                {groupApplications.map(
                   (application) => {
 
                     const applicant =
@@ -856,10 +941,7 @@ const AdmissionApplications = () => {
                                   'No email'}
                               </p>
 
-                              <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                                Application #
-                                {application.id}
-                              </p>
+
 
                             </div>
 
@@ -946,15 +1028,23 @@ const AdmissionApplications = () => {
 
                         <td className="px-6 py-5">
 
-                          <div className="flex justify-end">
+                          <div className="flex justify-end gap-2">
+                            {(application.status === 'pending' || application.status === 'rejected') && (
+                              <>
+                                <button type="button" onClick={() => openEditor(application)} title="Edit application"
+                                  className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">
+                                  <Pencil className="h-4 w-4" /><span className="sr-only sm:not-sr-only">Edit</span>
+                                </button>
+                                <button type="button" onClick={() => withdrawApplication(application)} title="Withdraw application"
+                                  className="inline-flex items-center gap-2 rounded-xl border border-red-200 px-3 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-50 dark:border-red-900/50 dark:text-red-300 dark:hover:bg-red-950/30">
+                                  <Trash2 className="h-4 w-4" /><span className="sr-only sm:not-sr-only">Delete</span>
+                                </button>
+                              </>
+                            )}
 
                             <button
                               type="button"
-                              onClick={() =>
-                                navigate(
-                                  `/admin/admission-applications/${application.id}`
-                                )
-                              }
+                              onClick={() => setSelectedApplication(application)}
                               className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#123B5D] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors duration-200  hover:bg-[#0F3553] hover:shadow-md"
                             >
 
@@ -978,9 +1068,83 @@ const AdmissionApplications = () => {
             </table>
 
           </div>
+            )}
+          </ApplicantApplicationGroups>
         )}
 
       </section>
+
+      {selectedApplication && (
+        <ModalPortal onEscape={closeDetails}>
+          <div
+            className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/60 p-4"
+            onMouseDown={(event) => { if (event.target === event.currentTarget) closeDetails(); }}
+          >
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="admission-details-title"
+              aria-busy={detailsBusy}
+              className="ep-card animate-scale-in flex max-h-[calc(100dvh-2rem)] w-full max-w-7xl flex-col overflow-hidden"
+            >
+              <header className="flex shrink-0 items-center justify-between gap-4 border-b border-gray-200 px-5 py-4 dark:border-gray-700">
+                <div className="min-w-0">
+                  <h2 id="admission-details-title" className="text-lg font-bold text-[#123B5D] dark:text-sky-300">Admission Application Details</h2>
+                  <p className="truncate text-sm text-gray-500 dark:text-gray-400">{formatName(selectedApplication.applicant)}</p>
+                </div>
+                <button type="button" onClick={closeDetails} disabled={detailsBusy} aria-label="Close application details" className="shrink-0 rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-800">
+                  <X size={20} />
+                </button>
+              </header>
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6">
+                <Suspense fallback={<LoadingState message="Loading admission application..." />}>
+                  <AdmissionApplicationDetails key={selectedApplication.id} applicationId={selectedApplication.id} onClose={closeDetails} onBusyChange={handleDetailsBusy} />
+                </Suspense>
+              </div>
+            </section>
+          </div>
+        </ModalPortal>
+      )}
+
+      {editor && (
+        <ModalPortal onEscape={() => !saving && setEditor(null)}>
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/60 p-4" role="presentation">
+          <section role="dialog" aria-modal="true" aria-labelledby="application-editor-title" className="max-h-[90dvh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900">
+            <h2 id="application-editor-title" className="text-xl font-bold text-gray-900 dark:text-white">
+              {editor.application ? 'Edit admission application' : 'Create admission application'}
+            </h2>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {editor.application ? 'Applicant ownership and workflow status remain unchanged.' : 'Creates a pending application for the current open admission period.'}
+            </p>
+            {editorError && <ErrorMessage message={editorError}><p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300">{editorError}</p></ErrorMessage>}
+            <form onSubmit={saveApplication} className="mt-5 space-y-4">
+              {!editor.application && (
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">Applicant
+                  <select required value={editor.applicant_id} onChange={(event) => setEditor({ ...editor, applicant_id: event.target.value })} className="mt-1 w-full rounded-xl border border-gray-300 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
+                    <option value="">Select applicant</option>
+                    {applicants.map((applicant) => <option key={applicant.id} value={applicant.id}>{applicant.display_name || [applicant.first_name, applicant.last_name].filter(Boolean).join(' ') || 'Applicant'}</option>)}
+                  </select>
+                </label>
+              )}
+              {editor.application && <p className="rounded-lg bg-gray-50 p-3 text-sm text-gray-600 dark:bg-gray-800 dark:text-gray-300">Applicant: {formatName(editor.application.applicant)}</p>}
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">Academic program
+                <select required value={editor.academic_program_id} onChange={(event) => setEditor({ ...editor, academic_program_id: event.target.value })} className="mt-1 w-full rounded-xl border border-gray-300 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
+                  <option value="">Select program</option>
+                  {programs.map((program) => <option key={program.id} value={program.id}>{program.name}</option>)}
+                </select>
+              </label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">Remarks
+                <textarea maxLength={1000} rows={4} value={editor.remarks} onChange={(event) => setEditor({ ...editor, remarks: event.target.value })} className="mt-1 w-full rounded-xl border border-gray-300 bg-white p-3 dark:border-gray-700 dark:bg-gray-800" />
+              </label>
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" disabled={saving} onClick={() => setEditor(null)} className="rounded-xl border border-gray-300 px-4 py-2.5 font-semibold text-gray-700 dark:border-gray-700 dark:text-gray-200">Cancel</button>
+                <button type="submit" disabled={saving} className="rounded-xl bg-[#123B5D] px-4 py-2.5 font-semibold text-white disabled:opacity-60">{saving ? 'Saving…' : editor.application ? 'Save changes' : 'Create application'}</button>
+              </div>
+            </form>
+          </section>
+        </div>
+        </ModalPortal>
+      )}
 
       {/* ==========================================
           FOOTER
@@ -1007,6 +1171,11 @@ const AdmissionApplications = () => {
 // ==========================================
 // STAT CARD
 // ==========================================
+
+const AdmissionApplicationsWrapper = () => {
+  const { confirm, dialog } = useConfirmDialog();
+  return <><AdmissionApplications confirm={confirm} /><ConfirmDialogHost dialog={dialog} /></>;
+};
 
 const StatCard = ({
   label,
@@ -1060,4 +1229,4 @@ const StatCard = ({
   );
 };
 
-export default AdmissionApplications;
+export default AdmissionApplicationsWrapper;

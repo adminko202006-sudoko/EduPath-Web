@@ -1,14 +1,16 @@
+import ErrorMessage from '../../components/ui/ErrorMessage';
 import { useCallback, useEffect, useState } from 'react';
-import { AlertCircle, CalendarDays, Megaphone, RefreshCw, WifiOff } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import { AlertCircle, CalendarDays, Megaphone, WifiOff } from 'lucide-react';
+import { useAuth } from '../../context/useAuth';
 import api from '../../services/api';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 import Loading from '../../components/Loading';
 
 const unwrap = (payload) => {
   if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload?.data)) return payload.data;
   if (Array.isArray(payload?.data?.data)) return payload.data.data;
-  return [];
+  throw new Error('Invalid announcement response');
 };
 
 const formatDate = (value) => {
@@ -42,7 +44,7 @@ const Announcements = () => {
       setEndpointMissing(missing);
       setError(
         missing
-          ? 'The Laravel API does not currently expose GET /api/applicant/announcements. The backend route must be added before applicant announcements can load.'
+          ? 'Announcements are temporarily unavailable. Please try again later.'
           : err.response?.data?.message || 'Announcements could not be loaded. Check your connection and try again.'
       );
     } finally {
@@ -50,16 +52,21 @@ const Announcements = () => {
       setRefreshing(false);
     }
   }, [token]);
+  useAutoRefresh(async () => {
+    await loadAnnouncements(true);
+  });
 
   useEffect(() => {
-    loadAnnouncements();
+    queueMicrotask(() => {
+      loadAnnouncements();
+    });
   }, [loadAnnouncements]);
 
   if (loading) return <Loading label="Loading announcements..." fullScreen />;
 
   return (
     <div className="page-transition space-y-6">
-      <section className="ep-brand-gradient relative overflow-hidden rounded-2xl p-6 text-white shadow-lg sm:p-8">
+      <section className="ep-page-banner ep-brand-gradient relative overflow-hidden rounded-2xl p-6 text-white shadow-lg sm:p-8">
         <div className="pointer-events-none absolute -right-12 -top-16 h-56 w-56 rounded-full bg-[#48C8FF]/15 blur-3xl" />
         <div className="relative flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
           <div>
@@ -71,21 +78,19 @@ const Announcements = () => {
               Important updates from Trinidad Municipal College about admissions, scholarships, and applicant activities.
             </p>
           </div>
-          <button type="button" onClick={() => loadAnnouncements(true)} disabled={refreshing} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-60">
-            <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
-            {refreshing ? 'Refreshing...' : 'Refresh'}
-          </button>
+          
         </div>
       </section>
 
       {error && (
-        <section role="alert" className="flex gap-3 rounded-2xl border border-amber-300/70 bg-amber-50 p-4 text-amber-950 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-100">
+        <ErrorMessage message={error}><section role="alert" className="flex gap-3 rounded-2xl border border-amber-300/70 bg-amber-50 p-4 text-amber-950 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-100">
           {endpointMissing ? <WifiOff className="mt-0.5 shrink-0" size={20} /> : <AlertCircle className="mt-0.5 shrink-0" size={20} />}
           <div>
-            <p className="font-semibold">{endpointMissing ? 'Announcements need a backend route' : 'Unable to load announcements'}</p>
+            <p className="font-semibold">Unable to load announcements</p>
             <p className="mt-1 text-sm leading-6">{error}</p>
+            <button type="button" disabled={refreshing} onClick={() => loadAnnouncements(true)} className="mt-2 font-semibold underline">Retry</button>
           </div>
-        </section>
+        </section></ErrorMessage>
       )}
 
       {!error && items.length === 0 && (

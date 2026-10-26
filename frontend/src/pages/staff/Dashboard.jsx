@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useCallback, useEffect, useState } from 'react';
 
 import {
   Users,
@@ -15,17 +16,20 @@ import {
 } from 'lucide-react';
 
 import api from '../../services/api';
-import { useAuth } from '../../context/AuthContext';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
+import { useAuth } from '../../context/useAuth';
+import { hasStaffPermission } from '../../services/staffAccess';
 
 const Dashboard = () => {
   const { token, user } = useAuth();
+  const canViewAdmissions = hasStaffPermission(user, 'manage_admissions') || hasStaffPermission(user, 'view_reports');
 
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  const fetchDashboard = async (isRefresh = false) => {
+  const fetchDashboard = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) {
         setRefreshing(true);
@@ -40,8 +44,6 @@ const Dashboard = () => {
           Authorization: `Bearer ${token}`,
         },
       });
-
-      console.log('Staff dashboard response:', response.data);
 
       const dashboardData =
         response.data?.data ||
@@ -62,13 +64,18 @@ const Dashboard = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [token]);
+  useAutoRefresh(async () => {
+    await fetchDashboard(true);
+  });
 
   useEffect(() => {
     if (token) {
-      fetchDashboard();
+      queueMicrotask(() => {
+        fetchDashboard();
+      });
     }
-  }, [token]);
+  }, [token, fetchDashboard]);
 
   const statCards = dashboard
     ? [
@@ -128,7 +135,14 @@ const Dashboard = () => {
           iconBg: 'bg-yellow-50 dark:bg-yellow-500/10',
           iconColor: 'text-yellow-600 dark:text-yellow-400',
         },
-      ]
+      ].filter((card) => {
+        const permission = {
+          'Scholarship Applicants': 'manage_scholarships',
+          'Upcoming Exams': 'manage_exams',
+          Announcements: 'manage_announcements',
+        }[card.title] || 'manage_admissions';
+        return hasStaffPermission(user, permission) || (permission !== 'manage_announcements' && hasStaffPermission(user, 'view_reports'));
+      })
     : [];
 
   if (loading) {
@@ -197,7 +211,7 @@ const Dashboard = () => {
 
   if (error) {
     return (
-      <div className="page-transition min-h-[500px] flex items-center justify-center">
+      <ErrorMessage message={error}><div className="page-transition min-h-[500px] flex items-center justify-center">
         <div className="ep-card max-w-lg w-full p-8 text-center animate-scale-in">
           <div className="w-16 h-16 rounded-2xl bg-red-50 dark:bg-red-500/10 flex items-center justify-center mx-auto mb-5">
             <XCircle className="w-8 h-8 text-red-500" />
@@ -234,7 +248,7 @@ const Dashboard = () => {
             Try Again
           </button>
         </div>
-      </div>
+      </div></ErrorMessage>
     );
   }
 
@@ -245,7 +259,7 @@ const Dashboard = () => {
           HERO / PAGE HEADER
       ===================================================== */}
       <section
-        className="
+        className="ep-page-banner 
           relative
           overflow-hidden
           rounded-2xl
@@ -318,39 +332,7 @@ const Dashboard = () => {
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => fetchDashboard(true)}
-            disabled={refreshing}
-            className="
-              self-start
-              lg:self-center
-              inline-flex
-              items-center
-              gap-2
-              px-4
-              py-2.5
-              rounded-xl
-              bg-white/10
-              hover:bg-white/20
-              border
-              border-white/10
-              text-white
-              text-sm
-              font-semibold
-              backdrop-blur-sm
-              shadow-sm
-              transition-colors
-              disabled:opacity-60
-            "
-          >
-            <RefreshCw
-              size={16}
-              className={refreshing ? 'animate-spin' : ''}
-            />
-
-            {refreshing ? 'Refreshing...' : 'Refresh'}
-          </button>
+          
         </div>
       </section>
 
@@ -371,6 +353,7 @@ const Dashboard = () => {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {statCards.length === 0 && <p className="ep-card p-5 text-sm text-slate-600 dark:text-slate-300 sm:col-span-2 lg:col-span-4">No dashboard features are enabled for your account. Open My Profile to review your permissions, or contact Admin for access.</p>}
           {statCards.map((card, index) => {
             const Icon = card.icon;
 
@@ -444,7 +427,7 @@ const Dashboard = () => {
       {/* =====================================================
           RECENT APPLICANTS
       ===================================================== */}
-      <section
+      {canViewAdmissions && <section
         className="
           ep-card
           overflow-hidden
@@ -704,7 +687,7 @@ const Dashboard = () => {
             </p>
           </div>
         )}
-      </section>
+      </section>}
     </div>
   );
 };

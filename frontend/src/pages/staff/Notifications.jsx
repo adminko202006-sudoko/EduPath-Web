@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import { showErrorDialog } from '../../services/errorDialogs';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useCallback, useEffect, useState } from 'react';
 
 import {
   Search,
@@ -17,9 +19,11 @@ import {
 } from 'lucide-react';
 
 import api from '../../services/api';
-import { useConfirmDialog, ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
+import { ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import { useConfirmDialog } from '../../components/ui/useConfirmDialog';
 import ModalPortal from '../../components/ui/ModalPortal';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 
 const StatusBadge = ({ isRead }) => {
   if (isRead) {
@@ -77,7 +81,7 @@ const StaffNotifications = ({ confirm }) => {
   const [statusFilter, setStatusFilter] = useState('all');
 
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
   const [showForm, setShowForm] = useState(false);
@@ -95,7 +99,7 @@ const StaffNotifications = ({ confirm }) => {
   // FETCH NOTIFICATIONS
   // =====================================================
 
-  const fetchNotifications = async (isRefresh = false) => {
+  const fetchNotifications = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) {
         setRefreshing(true);
@@ -123,13 +127,18 @@ const StaffNotifications = ({ confirm }) => {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [token]);
+  useAutoRefresh(async () => {
+    await fetchNotifications(true);
+  });
 
   useEffect(() => {
     if (token) {
-      fetchNotifications();
+      queueMicrotask(() => {
+        fetchNotifications();
+      });
     }
-  }, [token]);
+  }, [token, fetchNotifications]);
 
   // =====================================================
   // FORM
@@ -205,7 +214,7 @@ const StaffNotifications = ({ confirm }) => {
     } catch (err) {
       console.error('Failed to send notification:', err);
 
-      alert(
+      showErrorDialog(
         err.response?.data?.message ||
           'Failed to send notification.'
       );
@@ -257,7 +266,7 @@ const StaffNotifications = ({ confirm }) => {
         err
       );
 
-      alert(
+      showErrorDialog(
         err.response?.data?.message ||
           'Failed to delete notification.'
       );
@@ -407,7 +416,7 @@ const StaffNotifications = ({ confirm }) => {
       ===================================================== */}
 
       <section
-        className="
+        className="ep-page-banner 
           relative
           overflow-hidden
           rounded-2xl
@@ -480,45 +489,7 @@ const StaffNotifications = ({ confirm }) => {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-2">
-              <button
-                type="button"
-                onClick={() =>
-                  fetchNotifications(true)
-                }
-                disabled={refreshing}
-                className="
-                  inline-flex
-                  items-center
-                  justify-center
-                  gap-2
-                  px-4
-                  py-2.5
-                  rounded-xl
-                  bg-white/10
-                  hover:bg-white/20
-                  border
-                  border-white/10
-                  text-white
-                  text-sm
-                  font-semibold
-                  backdrop-blur-sm
-                  transition-colors
-                  disabled:opacity-60
-                "
-              >
-                <RefreshCw
-                  size={16}
-                  className={
-                    refreshing
-                      ? 'animate-spin'
-                      : ''
-                  }
-                />
-
-                {refreshing
-                  ? 'Refreshing...'
-                  : 'Refresh'}
-              </button>
+              
 
               <button
                 type="button"
@@ -655,7 +626,7 @@ const StaffNotifications = ({ confirm }) => {
       ===================================================== */}
 
       {error && (
-        <div
+        <ErrorMessage message={error}><div
           className="
             ep-card
             border-red-200
@@ -683,7 +654,7 @@ const StaffNotifications = ({ confirm }) => {
               {error}
             </p>
           </div>
-        </div>
+        </div></ErrorMessage>
       )}
 
       {/* =====================================================

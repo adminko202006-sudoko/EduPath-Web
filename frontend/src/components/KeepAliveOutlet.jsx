@@ -1,5 +1,7 @@
 import { useLocation, useOutlet } from 'react-router-dom';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
+import { RouteActivityContext } from '../context/routeActivityContext';
+import { LoadingState } from './ui/Shared';
 
 const KeepAliveOutlet = () => {
   const location = useLocation();
@@ -30,7 +32,11 @@ const KeepAliveOutlet = () => {
             }}
             className="w-full"
           >
-            {element}
+            <RouteActivityContext.Provider value={key === routeKey}>
+              <Suspense fallback={<LoadingState message="Loading page..." />}>
+                {element}
+              </Suspense>
+            </RouteActivityContext.Provider>
           </div>
         )
       )}

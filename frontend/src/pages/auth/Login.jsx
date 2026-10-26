@@ -1,6 +1,7 @@
+import ErrorMessage from '../../components/ui/ErrorMessage';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 
 import {
   Mail,
@@ -10,8 +11,6 @@ import {
   ArrowRight,
   GraduationCap,
   ShieldCheck,
-  BriefcaseBusiness,
-  CheckCircle2,
   AlertCircle,
   UsersRound,
   Sparkles,
@@ -19,7 +18,7 @@ import {
   Info,
 } from 'lucide-react';
 
-import tmcLogo from '../../assets/tmcLogo.jpg';
+import LoginBrandLogos from '../../components/LoginBrandLogos';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -43,8 +42,6 @@ const Login = () => {
     rememberedEmail !== ''
   );
 
-  const [selectedRole, setSelectedRole] = useState('applicant');
-
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -52,7 +49,7 @@ const Login = () => {
 
   // =========================================================
   // NAVIGATION TRANSITION
-  // null | register | forgot
+  // null | forgot
   // =========================================================
   const [navigationState, setNavigationState] = useState(null);
 
@@ -69,30 +66,6 @@ const Login = () => {
 
 
   // =========================================================
-  // PORTAL OPTIONS
-  // =========================================================
-  const portals = [
-    {
-      id: 'applicant',
-      title: 'Applicant',
-      subtitle: 'Students & applicants',
-      icon: GraduationCap,
-    },
-    {
-      id: 'staff',
-      title: 'Staff',
-      subtitle: 'TMC staff members',
-      icon: BriefcaseBusiness,
-    },
-    {
-      id: 'admin',
-      title: 'Admin',
-      subtitle: 'System administrators',
-      icon: ShieldCheck,
-    },
-  ];
-
-  // =========================================================
   // HANDLE INPUT
   // =========================================================
   const handleChange = (e) => {
@@ -101,14 +74,6 @@ const Login = () => {
       [e.target.name]: e.target.value,
     });
 
-    setError('');
-  };
-
-  // =========================================================
-  // HANDLE ROLE SELECTION
-  // =========================================================
-  const handleRoleChange = (role) => {
-    setSelectedRole(role);
     setError('');
   };
 
@@ -132,6 +97,7 @@ const Login = () => {
   // =========================================================
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return;
 
     setError('');
     setLoading(true);
@@ -156,23 +122,6 @@ const Login = () => {
       // =====================================================
       const response = await login(formData);
       const user = response.user;
-
-      // =====================================================
-      // BACKEND ROLE IS THE REAL ROLE
-      // =====================================================
-      if (user.role !== selectedRole) {
-        setError(
-          `This account is registered as ${
-            user.role === 'admin'
-              ? 'an administrator'
-              : user.role === 'staff'
-                ? 'a staff member'
-                : 'an applicant'
-          }. Please select the correct portal.`
-        );
-
-        return;
-      }
 
       // =====================================================
       // REDIRECT TO CORRECT PORTAL
@@ -205,30 +154,6 @@ const Login = () => {
       setLoading(false);
     }
   };
-
-
-    // =========================================================
-    // LOGIN → REGISTER
-    // SIMPLE SMOOTH SLIDE
-    // =========================================================
-    const handleCreateAccount = (e) => {
-      e.preventDefault();
-
-      if (
-        selectedRole !== 'applicant' ||
-        navigationState ||
-        loading
-      ) {
-        return;
-      }
-
-      setError('');
-      setNavigationState('register');
-
-      navigationTimerRef.current = setTimeout(() => {
-        navigate('/register');
-      }, 450);
-    };
 
 
     // =========================================================
@@ -581,7 +506,14 @@ const Login = () => {
           {/* ===================================================
               LEFT SIDE — BRANDING
           ==================================================== */}
-          <div className="edupath-branding relative lg:w-[46%] bg-[#123B5D] overflow-hidden">
+          <div
+            className="edupath-branding relative lg:w-[46%] bg-[#123B5D] overflow-hidden"
+            style={{
+              backgroundImage: "linear-gradient(180deg, rgba(5, 24, 42, 0.72), rgba(8, 36, 57, 0.88)), url('/TrinidadMunicipalCollege.png')",
+              backgroundSize: 'cover',
+              backgroundPosition: 'center 42%',
+            }}
+          >
 
             {/* -----------------------------------------------
                 FADING LIGHT — MAIN
@@ -658,28 +590,7 @@ const Login = () => {
             ------------------------------------------------ */}
             <div className="relative z-10 min-h-full flex flex-col items-center justify-center text-center px-6 sm:px-10 lg:px-12 py-12">
 
-              {/* LOGO */}
-              <div className="edupath-float mb-7">
-
-                <div className="relative">
-
-                  {/* Logo glow */}
-                  <div className="absolute inset-0 rounded-full bg-[#F4B400]/20 blur-2xl scale-110" />
-
-                  <div className="relative w-32 h-32 sm:w-40 sm:h-40 lg:w-44 lg:h-44 rounded-full bg-white p-2 shadow-[0_15px_45px_rgba(0,0,0,0.25)] ring-4 ring-[#F4B400]/60">
-
-                    <img
-                      src={tmcLogo}
-                      alt="Trinidad Municipal College Logo"
-                      className="w-full h-full object-contain rounded-full"
-                    />
-                    
-
-                  </div>
-
-                </div>
-
-              </div>
+              <div className="edupath-float mb-7"><LoginBrandLogos large /></div>
 
               {/* WELCOME */}
               <div className="max-w-md">
@@ -892,26 +803,7 @@ const Login = () => {
               {/* =================================================
                   MOBILE LOGO
               ================================================== */}
-              <div className="flex lg:hidden items-center justify-center mb-8">
-
-                <div className="relative">
-
-                  <div className="absolute inset-0 rounded-full bg-[#F4B400]/20 blur-xl" />
-
-                  <div className="relative w-20 h-20 rounded-full bg-white p-1.5 shadow-lg ring-2 ring-[#F4B400]">
-
-                    <img
-                      src={tmcLogo}
-                      alt="Trinidad Municipal College Logo"
-                      className="w-full h-full object-contain rounded-full"
-                    />
-
-                  </div>
-
-                </div>
-
-              </div>
-
+              <div className="mb-8 lg:hidden"><LoginBrandLogos /></div>
 
               {/* =================================================
                   HEADER
@@ -955,105 +847,10 @@ const Login = () => {
 
 
               {/* =================================================
-                  PORTAL SELECTOR
-              ================================================== */}
-              <div className="mb-6">
-
-                <div className="flex items-center justify-between mb-3">
-
-                  <label className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                    Select your portal
-                  </label>
-
-                  <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                    Choose before signing in
-                  </span>
-
-                </div>
-
-                <div className="grid grid-cols-3 gap-2.5">
-
-                  {portals.map((portal) => {
-
-                    const Icon = portal.icon;
-
-                    const isSelected =
-                      selectedRole === portal.id;
-
-                    return (
-                      <button
-                        key={portal.id}
-                        type="button"
-                        onClick={() =>
-                          handleRoleChange(portal.id)
-                        }
-                        className={`
-                          edupath-ease relative rounded-2xl border p-3 text-left
-                          ${
-                            isSelected
-                              ? 'border-[#123B5D] bg-[#123B5D]/[0.055] shadow-sm ring-2 ring-[#123B5D]/[0.08] dark:border-[#F4B400] dark:bg-[#F4B400]/[0.08] dark:ring-[#F4B400]/[0.08]'
-                              : 'border-gray-200 bg-gray-50/80  hover:border-[#123B5D]/35 hover:bg-white hover:shadow-md dark:border-white/10 dark:bg-white/[0.035] dark:hover:border-[#F4B400]/35 dark:hover:bg-white/[0.07]'
-                          }
-                        `}
-                      >
-
-                        {isSelected && (
-                          <div className="absolute top-2.5 right-2.5">
-
-                            <CheckCircle2
-                              size={15}
-                              className="text-[#123B5D] dark:text-[#F4B400]"
-                            />
-
-                          </div>
-                        )}
-
-                        <div
-                          className={`
-                            edupath-ease w-9 h-9 rounded-xl flex items-center justify-center mb-2.5
-                            ${
-                              isSelected
-                                ? 'bg-[#123B5D] text-[#F4B400] shadow-sm dark:bg-[#F4B400] dark:text-[#123B5D]'
-                                : 'bg-white text-gray-500 border border-gray-100 dark:bg-white/[0.07] dark:text-gray-400 dark:border-white/10'
-                            }
-                          `}
-                        >
-
-                          <Icon size={18} />
-
-                        </div>
-
-                        <p
-                          className={`
-                            text-xs sm:text-sm font-bold
-                            ${
-                              isSelected
-                                ? 'text-[#123B5D] dark:text-white'
-                                : 'text-gray-700 dark:text-gray-200'
-                            }
-                          `}
-                        >
-                          {portal.title}
-                        </p>
-
-                        <p className="text-[9px] sm:text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 leading-tight">
-                          {portal.subtitle}
-                        </p>
-
-                      </button>
-                    );
-                  })}
-
-                </div>
-
-              </div>
-
-
-              {/* =================================================
                   ERROR MESSAGE
               ================================================== */}
               {error && (
-                <div className="mb-5 flex items-start gap-3 rounded-2xl bg-red-50 dark:bg-red-500/[0.08] border border-red-200 dark:border-red-500/20 px-4 py-3.5 text-sm text-red-700 dark:text-red-300 shadow-sm">
+                <ErrorMessage message={error}><div className="mb-5 flex items-start gap-3 rounded-2xl bg-red-50 dark:bg-red-500/[0.08] border border-red-200 dark:border-red-500/20 px-4 py-3.5 text-sm text-red-700 dark:text-red-300 shadow-sm">
 
                   <AlertCircle
                     size={19}
@@ -1064,7 +861,7 @@ const Login = () => {
                     {error}
                   </p>
 
-                </div>
+                </div></ErrorMessage>
               )}
 
 
@@ -1187,8 +984,7 @@ const Login = () => {
 
                   </label>
 
-                  {/* APPLICANT + ADMIN CAN RESET PASSWORD */}
-                  {selectedRole !== 'staff' && (
+                  {/* All existing account roles can recover their password. */}
                   <Link
                     to="/forgot-password"
                     onClick={handleForgotPassword}
@@ -1212,8 +1008,6 @@ const Login = () => {
                       ? 'Opening...'
                       : 'Forgot password?'}
                   </Link>
-                  )}
-
                 </div>
 
 
@@ -1242,11 +1036,7 @@ const Login = () => {
                   ) : (
                     <>
                       <span>
-                        Sign In as{' '}
-                        <span className="text-[#F4B400]">
-                          {selectedRole.charAt(0).toUpperCase() +
-                            selectedRole.slice(1)}
-                        </span>
+                        Sign In
                       </span>
 
                       <ArrowRight
@@ -1262,42 +1052,9 @@ const Login = () => {
 
 
               {/* =================================================
-                  REGISTRATION / STAFF / ADMIN MESSAGE
+                  STAFF / ADMIN MESSAGE
               ================================================== */}
               <div className="mt-7 pt-6 border-t border-gray-100 dark:border-white/10 text-center">
-
-                {selectedRole === 'applicant' ? (
-
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-
-                    Don't have an applicant account?{' '}
-
-                  <Link
-                    to="/register"
-                    onClick={handleCreateAccount}
-                    className={`
-                      edupath-ease
-                      font-semibold
-                      text-[#123B5D]
-                      dark:text-[#F4B400]
-                      hover:text-[#C99A00]
-                      dark:hover:text-[#FFD45A]
-
-                      ${
-                        navigationState
-                          ? 'pointer-events-none opacity-60'
-                          : ''
-                      }
-                    `}
-                  >
-                    {navigationState === 'register'
-                      ? 'Opening registration...'
-                      : 'Create Applicant Account'}
-                  </Link>
-
-                  </p>
-
-                ) : (
 
                   <div className="space-y-2">
 
@@ -1310,21 +1067,17 @@ const Login = () => {
 
                       <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
 
-                        {selectedRole === 'staff'
-                          ? 'Staff accounts are created by TMC administrators.'
-                          : 'Administrator accounts are managed securely by TMC.'}
+                        Staff and administrator accounts are managed by TMC.
 
                       </p>
 
                     </div>
 
                     <p className="text-xs text-gray-400 dark:text-gray-500">
-                      Public registration is only available for applicants.
+                      Contact TMC administration if you need account access.
                     </p>
 
                   </div>
-
-                )}
 
               </div>
 

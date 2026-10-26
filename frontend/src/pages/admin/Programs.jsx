@@ -1,9 +1,13 @@
-import { useEffect, useState } from 'react';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useEffect, useRef, useState } from 'react';
 
-import { useConfirmDialog, ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import { ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import { useConfirmDialog } from '../../components/ui/useConfirmDialog';
+import ModalPortal from '../../components/ui/ModalPortal';
 
 import api from '../../services/api';
-import { useAuth } from '../../context/AuthContext';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
+import { useAuth } from '../../context/useAuth';
 import {
   Plus,
   BookOpen,
@@ -32,13 +36,16 @@ const Programs = ({ confirm }) => {
 
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
+  const [, setRefreshing] = useState(false);
 
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
   const [editingProgram, setEditingProgram] = useState(null);
   const [editMode, setEditMode] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [formError, setFormError] = useState('');
+  const submittingRef = useRef(false);
 
   const [deleting, setDeleting] = useState(null);
   const [toggling, setToggling] = useState(null);
@@ -59,9 +66,9 @@ const Programs = ({ confirm }) => {
 
       setError('');
 
-      const response = await api.get('/programs');
+      const response = await api.get('/admin/programs');
 
-      setPrograms(response.data.programs || []);
+      setPrograms(response.data.data || []);
     } catch (err) {
       console.error('Failed to load academic programs:', err);
 
@@ -74,6 +81,9 @@ const Programs = ({ confirm }) => {
       setRefreshing(false);
     }
   };
+  useAutoRefresh(async () => {
+    await fetchPrograms(true);
+  });
 
   // ==========================================
   // INITIAL LOAD
@@ -81,7 +91,9 @@ const Programs = ({ confirm }) => {
 
   useEffect(() => {
     if (token) {
-      fetchPrograms();
+      queueMicrotask(() => {
+        fetchPrograms();
+      });
     }
   }, [token]);
 
@@ -90,6 +102,7 @@ const Programs = ({ confirm }) => {
   // ==========================================
 
   const handleEdit = (program) => {
+    if (submittingRef.current) return;
     setEditingProgram(program);
     setEditMode(true);
 
@@ -100,10 +113,8 @@ const Programs = ({ confirm }) => {
     setError('');
     setMessage('');
 
-    window.scrollTo({
-      top: 0,
-      behavior: 'smooth',
-    });
+    setFormError('');
+    setShowForm(true);
   };
 
   // ==========================================
@@ -111,6 +122,9 @@ const Programs = ({ confirm }) => {
   // ==========================================
 
   const handleCancelEdit = () => {
+    if (submittingRef.current) return;
+    setShowForm(false);
+    setFormError('');
     setEditingProgram(null);
     setEditMode(false);
 
@@ -126,31 +140,33 @@ const Programs = ({ confirm }) => {
   // SUBMIT PROGRAM
   // ==========================================
 
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
 
-    setError('');
+    setFormError('');
     setMessage('');
     setAdding(true);
 
     try {
+      const payload = {
+        name: name.trim(),
+        code: code.trim().toUpperCase(),
+        description: description.trim(),
+        is_active: editMode && editingProgram
+          ? editingProgram.is_active
+          : true,
+      };
+
       if (editMode && editingProgram) {
         await api.put(
-          `/programs/${editingProgram.id}`,
-          {
-            name: name.trim(),
-            code: code.trim().toUpperCase(),
-            description: description.trim(),
-            is_active: editingProgram.is_active,
-          }
+          `/admin/programs/${editingProgram.id}`,
+          payload
         );
       } else {
-        await api.post('/programs', {
-          name: name.trim(),
-          code: code.trim().toUpperCase(),
-          description: description.trim(),
-          is_active: true,
-        });
+        await api.post('/admin/programs', payload);
       }
 
       setMessage(
@@ -162,39 +178,33 @@ const Programs = ({ confirm }) => {
       setName('');
       setCode('');
       setDescription('');
-
       setEditingProgram(null);
       setEditMode(false);
+      setShowForm(false);
 
-      await fetchPrograms();
+      await fetchPrograms(true);
     } catch (err) {
       console.error('Failed to save academic program:', err);
 
       if (err.response?.data?.errors) {
-        const validationErrors =
-          err.response.data.errors;
+        const validationErrors = err.response.data.errors;
+        const firstError = Object.values(validationErrors)[0]?.[0];
 
-        const firstError =
-          Object.values(validationErrors)[0]?.[0];
-
-        setError(
-          firstError ||
-            'Please check your input.'
-        );
+        setFormError(firstError || 'Please check your input.');
       } else {
-        setError(
+        setFormError(
           err.response?.data?.message ||
-            (
-              editMode
-                ? 'Failed to update academic program.'
-                : 'Failed to add academic program.'
-            )
+            (editMode
+              ? 'Failed to update academic program.'
+              : 'Failed to add academic program.')
         );
       }
     } finally {
+      submittingRef.current = false;
       setAdding(false);
     }
   };
+
 
   // ==========================================
   // DELETE PROGRAM
@@ -216,7 +226,7 @@ const Programs = ({ confirm }) => {
     setDeleting(id);
 
     try {
-      await api.delete(`/programs/${id}`);
+      await api.delete(`/admin/programs/${id}`);
 
       setMessage(
         'Academic program deleted successfully.'
@@ -266,7 +276,7 @@ const Programs = ({ confirm }) => {
 
     try {
       await api.put(
-        `/programs/${program.id}`,
+        `/admin/programs/${program.id}`,
         {
           name: program.name,
           code: program.code,
@@ -385,7 +395,7 @@ const Programs = ({ confirm }) => {
       ========================================== */}
 
       <section
-        className="
+        className="ep-page-banner 
           relative
           overflow-hidden
           rounded-2xl
@@ -461,45 +471,17 @@ const Programs = ({ confirm }) => {
 
           </div>
 
-          <button
-            type="button"
-            onClick={() => fetchPrograms(true)}
-            disabled={refreshing}
-            className="
-              self-start
-              lg:self-center
-              inline-flex
-              items-center
-              gap-2
-              px-4
-              py-2.5
-              rounded-xl
-              bg-white/10
-              hover:bg-white/20
-              border
-              border-white/10
-              text-white
-              text-sm
-              font-semibold
-              backdrop-blur-sm
-              shadow-sm
-              transition-colors
-              disabled:opacity-60
-            "
-          >
-            <RefreshCw
-              size={16}
-              className={
-                refreshing
-                  ? 'animate-spin'
-                  : ''
-              }
-            />
-
-            {refreshing
-              ? 'Refreshing...'
-              : 'Refresh'}
-          </button>
+          <div className="flex flex-wrap items-center gap-3 self-start lg:self-center lg:shrink-0">
+          
+            <button
+              type="button"
+              disabled={adding}
+              onClick={() => { handleCancelEdit(); setShowForm(true); }}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#F4B400] px-4 py-2.5 text-sm font-semibold text-[#0B2941] shadow-sm transition-colors hover:bg-[#DFA500] disabled:opacity-60"
+            >
+              <Plus size={18} /> Add Academic Program
+            </button>
+          </div>
 
         </div>
       </section>
@@ -539,7 +521,7 @@ const Programs = ({ confirm }) => {
       )}
 
       {error && (
-        <div
+        <ErrorMessage message={error}><div
           className="
             flex
             items-center
@@ -565,7 +547,7 @@ const Programs = ({ confirm }) => {
           <p className="text-sm font-medium">
             {error}
           </p>
-        </div>
+        </div></ErrorMessage>
       )}
 
       {/* ==========================================
@@ -820,17 +802,21 @@ const Programs = ({ confirm }) => {
           ADD / EDIT PROGRAM
       ========================================== */}
 
-      <section
-        className="
-          ep-card
-          overflow-hidden
-          animate-fade-up
-        "
-        style={{
-          animationDelay: '135ms',
-        }}
-      >
 
+
+      {showForm && (
+        <ModalPortal onEscape={handleCancelEdit}>
+          <div
+            className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/60 p-4"
+            onMouseDown={(event) => { if (event.target === event.currentTarget) handleCancelEdit(); }}
+          >
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="program-form-title"
+              aria-busy={adding}
+              className="ep-card animate-scale-in w-full max-w-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain"
+            >
         <div
           className="
             p-6
@@ -870,7 +856,7 @@ const Programs = ({ confirm }) => {
 
           <div>
 
-            <h2 className="text-xl font-bold text-[#123B5D] dark:text-sky-300">
+            <h2 id="program-form-title" className="text-xl font-bold text-[#123B5D] dark:text-sky-300">
               {editMode
                 ? 'Edit Academic Program'
                 : 'Add Academic Program'}
@@ -884,6 +870,9 @@ const Programs = ({ confirm }) => {
 
           </div>
 
+          <button type="button" onClick={handleCancelEdit} disabled={adding} aria-label="Close program form" className="ml-auto self-start rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-800">
+            <X size={20} />
+          </button>
         </div>
 
         <form
@@ -891,17 +880,21 @@ const Programs = ({ confirm }) => {
           className="p-6"
         >
 
+          {formError && <ErrorMessage message={formError}><p role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{formError}</p></ErrorMessage>}
+          <fieldset disabled={adding}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
             {/* PROGRAM NAME */}
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+              <label htmlFor="program-name" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                 Program Name
               </label>
 
               <input
                 type="text"
+                id="program-name"
+                maxLength={255}
                 value={name}
                 onChange={(e) =>
                   setName(e.target.value)
@@ -936,12 +929,14 @@ const Programs = ({ confirm }) => {
             {/* PROGRAM CODE */}
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+              <label htmlFor="program-code" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                 Program Code
               </label>
 
               <input
                 type="text"
+                id="program-code"
+                maxLength={50}
                 value={code}
                 onChange={(e) =>
                   setCode(
@@ -984,11 +979,12 @@ const Programs = ({ confirm }) => {
 
             <div className="md:col-span-2">
 
-              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+              <label htmlFor="program-description" className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                 Description
               </label>
 
               <textarea
+                id="program-description"
                 value={description}
                 onChange={(e) =>
                   setDescription(
@@ -1030,7 +1026,6 @@ const Programs = ({ confirm }) => {
 
           <div className="mt-6 flex flex-col sm:flex-row justify-end gap-3">
 
-            {editMode && (
               <button
                 type="button"
                 onClick={handleCancelEdit}
@@ -1059,7 +1054,6 @@ const Programs = ({ confirm }) => {
                 <X size={17} />
                 Cancel
               </button>
-            )}
 
             <button
               type="submit"
@@ -1108,8 +1102,12 @@ const Programs = ({ confirm }) => {
 
           </div>
 
+          </fieldset>
         </form>
-      </section>
+            </section>
+          </div>
+        </ModalPortal>
+      )}
 
       {/* ==========================================
           REGISTERED PROGRAMS
@@ -1363,7 +1361,7 @@ const Programs = ({ confirm }) => {
                           shrink-0
                           transition-transform
                           duration-200
-                          
+
                         "
                       >
                         <GraduationCap
@@ -1378,9 +1376,7 @@ const Programs = ({ confirm }) => {
                           {program.name}
                         </h3>
 
-                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                          Program #{program.id}
-                        </p>
+
 
                       </div>
 

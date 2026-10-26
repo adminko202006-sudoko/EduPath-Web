@@ -1,0 +1,248 @@
+===== components/Sidebar.jsx:164
+ 160|     }
+ 161|   }, [role, token]);
+ 162| 
+ 163|   useEffect(() => {
+>164|     fetchUnreadNotifications();
+ 165| 
+ 166|     if (role !== 'applicant' || !token) return undefined;
+===== pages/admin/AdmissionApplicationDetails.jsx:83
+ 79|     if (!token || !id) {
+ 80|       return;
+ 81|     }
+ 82| 
+>83|     loadApplication();
+ 84|   }, [token, id]);
+ 85| 
+===== pages/admin/AdmissionApplications.jsx:96
+ 92|     if (!token) {
+ 93|       return;
+ 94|     }
+ 95| 
+>96|     loadApplications();
+ 97|   }, [token]);
+ 98| 
+===== pages/admin/Announcements.jsx:145
+ 141|     if (!token) {
+ 142|       return;
+ 143|     }
+ 144| 
+>145|     loadAnnouncements();
+ 146|   }, [token]);
+ 147| 
+===== pages/admin/ApplicantDetails.jsx:169
+ 165|     if (!token || !id) {
+ 166|       return;
+ 167|     }
+ 168| 
+>169|     loadApplicant();
+ 170|   }, [token, id]);
+ 171| 
+===== pages/admin/Applicants.jsx:148
+ 144|   });
+ 145| 
+ 146|   useEffect(() => {
+ 147|     if (!token) {
+>148|       setLoading(false);
+ 149|       return;
+ 150|     }
+===== pages/admin/ArchivedApplicants.jsx:64
+ 60|   });
+ 61| 
+ 62|   useEffect(() => {
+ 63|     if (token) {
+>64|       loadArchivedApplicants();
+ 65|     }
+ 66|   }, [token]);
+===== pages/admin/Dashboard.jsx:462
+ 458|     loadDashboard(true);
+ 459|   });
+ 460| 
+ 461|   useEffect(() => {
+>462|     loadDashboard();
+ 463|   }, [loadDashboard]);
+ 464| 
+===== pages/admin/Documents.jsx:108
+ 104|     loadDocuments(true);
+ 105|   });
+ 106| 
+ 107|   useEffect(() => {
+>108|     loadDocuments();
+ 109|   }, []);
+ 110| 
+===== pages/admin/EntranceExams.jsx:123
+ 119|     if (!token) {
+ 120|       return;
+ 121|     }
+ 122| 
+>123|     loadExams();
+ 124|   }, [token]);
+ 125| 
+===== pages/admin/Profile.jsx:74
+ 70|     loadProfile(true);
+ 71|   });
+ 72| 
+ 73|   useEffect(() => {
+>74|     loadProfile();
+ 75|   }, [token]);
+ 76| 
+===== pages/admin/Programs.jsx:88
+ 84|   // ==========================================
+ 85| 
+ 86|   useEffect(() => {
+ 87|     if (token) {
+>88|       fetchPrograms();
+ 89|     }
+ 90|   }, [token]);
+===== pages/admin/ScholarshipApplications.jsx:136
+ 132|   });
+ 133| 
+ 134|   useEffect(() => {
+ 135|     if (token) {
+>136|       fetchApplications();
+ 137|     }
+ 138|   }, [token]);
+===== pages/admin/Scholarships.jsx:111
+ 107|   });
+ 108| 
+ 109|   useEffect(() => {
+ 110|     if (token) {
+>111|       loadScholarships();
+ 112|     }
+ 113|   }, [token]);
+===== pages/admin/StaffManagement.jsx:215
+ 211|      INITIAL LOAD
+ 212|   ========================================================================== */
+ 213| 
+ 214|   useEffect(() => {
+>215|     fetchStaff();
+ 216|     fetchPrograms();
+ 217|   }, []);
+===== pages/applicant/Announcements.jsx:59
+ 55|     loadAnnouncements(true);
+ 56|   });
+ 57| 
+ 58|   useEffect(() => {
+>59|     loadAnnouncements();
+ 60|   }, [loadAnnouncements]);
+ 61| 
+===== pages/applicant/Dashboard.jsx:122
+ 118|     fetchDashboardData(true);
+ 119|   });
+ 120| 
+ 121|   useEffect(() => {
+>122|     fetchDashboardData();
+ 123|   }, [token]);
+ 124| 
+===== pages/applicant/EntranceExam.jsx:87
+ 83|   // INITIAL LOAD
+ 84|   // ==========================================
+ 85| 
+ 86|   useEffect(() => {
+>87|     loadExams();
+ 88|   }, [loadExams]);
+ 89| 
+===== pages/applicant/Notifications.jsx:73
+ 69|     if (!token) {
+ 70|       return;
+ 71|     }
+ 72| 
+>73|     loadNotifications();
+ 74|   }, [token]);
+ 75| 
+===== pages/applicant/Programs.jsx:63
+ 59|   });
+ 60| 
+ 61|   useEffect(() => {
+ 62|     if (token) {
+>63|       loadPrograms();
+ 64|     }
+ 65|   }, [token]);
+===== pages/applicant/ScholarshipApplication.jsx:154
+ 150|   });
+ 151| 
+ 152|   useEffect(() => {
+ 153|     if (token) {
+>154|       loadApplications();
+ 155|     }
+ 156|   }, [token]);
+===== pages/staff/AdmissionApplications.jsx:71
+ 67|     fetchApplications(true);
+ 68|   });
+ 69| 
+ 70|   useEffect(() => {
+>71|     fetchApplications();
+ 72|   }, [status]);
+ 73| 
+===== pages/staff/Announcements.jsx:137
+ 133|   });
+ 134| 
+ 135|   useEffect(() => {
+ 136|     if (token) {
+>137|       fetchAnnouncements();
+ 138|     }
+ 139|   }, [token]);
+===== pages/staff/Dashboard.jsx:73
+ 69|   });
+ 70| 
+ 71|   useEffect(() => {
+ 72|     if (token) {
+>73|       fetchDashboard();
+ 74|     }
+ 75|   }, [token]);
+===== pages/staff/Documents.jsx:74
+ 70|   });
+ 71| 
+ 72|   useEffect(() => {
+ 73|     if (token) {
+>74|       fetchDocuments();
+ 75|     }
+ 76|   }, [token]);
+===== pages/staff/EntranceExams.jsx:180
+ 176|   });
+ 177| 
+ 178|   useEffect(() => {
+ 179|     if (token) {
+>180|       fetchExams();
+ 181|     }
+ 182|   }, [token]);
+===== pages/staff/Exams.jsx:73
+ 69|   });
+ 70| 
+ 71|   useEffect(() => {
+ 72|     if (token) {
+>73|       loadExams();
+ 74|     }
+ 75|   }, [token]);
+===== pages/staff/Notifications.jsx:134
+ 130|   });
+ 131| 
+ 132|   useEffect(() => {
+ 133|     if (token) {
+>134|       fetchNotifications();
+ 135|     }
+ 136|   }, [token]);
+===== pages/staff/Profile.jsx:69
+ 65|     fetchProfile(true);
+ 66|   });
+ 67| 
+ 68|   useEffect(() => {
+>69|     fetchProfile();
+ 70|   }, []);
+ 71| 
+===== pages/staff/Reports.jsx:72
+ 68|   });
+ 69| 
+ 70|   useEffect(() => {
+ 71|     if (token) {
+>72|       fetchReports();
+ 73|     }
+ 74|   }, [token]);
+===== pages/staff/ScholarshipApplications.jsx:207
+ 203|   });
+ 204| 
+ 205|   useEffect(() => {
+ 206|     if (token) {
+>207|       loadApplications();
+ 208|     }
+ 209|   }, [token]);

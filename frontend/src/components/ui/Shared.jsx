@@ -10,7 +10,8 @@ import {
 
 import { Check, Search, X } from 'lucide-react';
 
-import ModalPortal from './ModalPortal';
+import { ConfirmationDialog } from './ConfirmDialog';
+import ErrorMessage from './ErrorMessage';
 
 /* =========================================================
    SHARED STATUS BADGE
@@ -24,12 +25,13 @@ const STATUS_CONFIG = {
   pending: { label: 'Pending', className: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300', icon: AlertTriangle },
   approved: { label: 'Approved', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300', icon: Check },
   rejected: { label: 'Rejected', className: 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300', icon: X },
+  withdrawn: { label: 'Withdrawn', className: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300', icon: X },
   archive: { label: 'Archived', className: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400', icon: X },
   verified: { label: 'Verified', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300', icon: Check },
   unverified: { label: 'Unverified', className: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300', icon: AlertTriangle },
   active: { label: 'Active', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300', icon: Check },
   inactive: { label: 'Inactive', className: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400', icon: X },
-  published: { label: 'Published', className: 'bg-emerald-100 text-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300', icon: Megaphone },
+  published: { label: 'Published', className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300', icon: Megaphone },
   scheduled: { label: 'Scheduled', className: 'bg-blue-100 text-[#123B5D] dark:bg-blue-950/50 dark:text-blue-300', icon: CalendarDays },
   completed: { label: 'Completed', className: 'bg-blue-100 text-[#123B5D] dark:bg-blue-950/50 dark:text-blue-300', icon: CalendarDays },
   enrolled: { label: 'Enrolled', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300', icon: Check },
@@ -146,7 +148,7 @@ const EmptyState = ({
    ========================================================= */
 
 const LoadingState = ({ message = 'Loading...' }) => (
-  <div className="flex items-center justify-center py-12">
+  <div className="flex items-center justify-center py-12" role="status" aria-live="polite">
     <RefreshCw className="h-5 w-5 animate-spin text-[#123B5D] dark:text-sky-300" />
 
     <span className="ml-2 text-sm font-medium text-gray-500 dark:text-gray-400">
@@ -163,6 +165,7 @@ const ErrorState = ({
   message = 'Something went wrong.',
   onRetry,
 }) => (
+  <ErrorMessage message={message}>
   <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700 shadow-sm dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-100 dark:bg-red-950/50">
       <AlertTriangle className="h-5 w-5" />
@@ -192,6 +195,7 @@ const ErrorState = ({
       )}
     </div>
   </div>
+  </ErrorMessage>
 );
 
 /* =========================================================
@@ -200,115 +204,9 @@ const ErrorState = ({
    Keeping this export for backward compatibility.
    ========================================================= */
 
-const ConfirmDialog = ({
-  open,
-  title = 'Are you sure?',
-  message = '',
-  confirmLabel = 'Confirm',
-  cancelLabel = 'Cancel',
-  destructive = false,
-  busy = false,
-  onConfirm,
-  onCancel,
-}) => {
-  if (!open) {
-    return null;
-  }
-
-  return (
-    <ModalPortal onEscape={onCancel}>
-      <div
-        className="
-          fixed inset-0 z-[100] flex items-center justify-center
-          bg-black/50 p-4 animate-[ep-scale-in_180ms_ease-out]
-        "
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        tabIndex={-1}
-        onMouseDown={(event) => {
-          if (event.target === event.currentTarget) {
-            onCancel?.();
-          }
-        }}
-      >
-      <div className="ep-card animate-scale-in w-full max-w-md p-6">
-        <div className="flex items-start gap-4">
-          <div
-            className={`
-              flex h-11 w-11 shrink-0 items-center justify-center rounded-xl
-              ${destructive
-                ? 'bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-300'
-                : 'bg-blue-100 text-[#123B5D] dark:bg-blue-950/50 dark:text-blue-300'}
-            `}
-          >
-            <AlertTriangle size={20} strokeWidth={2.2} />
-          </div>
-
-          <div>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-              {title}
-            </h2>
-
-            {message && (
-              <p className="mt-2 break-words text-sm leading-6 text-gray-500 dark:text-gray-400">
-                {message}
-              </p>
-            )}
-          </div>
-
-          <button
-            type="button"
-            onClick={onCancel}
-            className="
-              shrink-0 rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100
-              hover:text-gray-600
-              dark:hover:bg-gray-800 dark:hover:text-gray-300
-              disabled:opacity-50
-            "
-            aria-label="Close"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="mt-6 flex flex-col gap-3 border-t border-gray-200 pt-5 dark:border-gray-700 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="
-              rounded-xl border border-gray-300 bg-white px-5 py-2.5 font-semibold
-              text-gray-700 transition hover:bg-gray-50
-              dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300
-              dark:hover:bg-gray-700 disabled:opacity-50
-            "
-          >
-            {cancelLabel}
-          </button>
-
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={busy}
-            className={`
-              inline-flex items-center justify-center gap-2
-              rounded-xl px-5 py-2.5 font-semibold text-white shadow-md
-              transition disabled:cursor-not-allowed disabled:opacity-60
-              ${destructive
-                ? 'bg-red-600 hover:bg-red-700'
-                : 'bg-[#123B5D] hover:bg-[#0F3553]'}
-            `}
-          >
-            {busy && <RefreshCw size={15} className="animate-spin" />}
-
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
-      </div>
-    </ModalPortal>
-  );
-};
+const ConfirmDialog = ({ destructive = false, ...props }) => (
+  <ConfirmationDialog destructive={destructive} {...props} />
+);
 
 /* =========================================================
    SEARCH FILTER BAR
@@ -358,22 +256,12 @@ const SearchFilterBar = ({
 );
 
 /* =========================================================
-   IMPERATIVE CONFIRM (window.confirm replacement)
-   ========================================================= */
-
-const showConfirmDialog = ({
-  title = 'Are you sure?',
-  message = '',
-} = {}) =>
-  window.confirm(
-    [title, message].filter(Boolean).join('\n\n')
-  );
-
-/* =========================================================
    EXPORTS
+
+   `showConfirmDialog` moved to ./showConfirmDialog so this file only exports
+   components and React Fast Refresh keeps working.
    ========================================================= */
 
-// Fast refresh only works when a file only exports components.
 export {
   StatusBadge,
   EmptyState,
@@ -381,5 +269,4 @@ export {
   ErrorState,
   ConfirmDialog,
   SearchFilterBar,
-  showConfirmDialog,
 };

@@ -1,4 +1,3 @@
-import { useRef, useState } from 'react';
 
 import { AlertTriangle, RefreshCw, X } from 'lucide-react';
 
@@ -8,86 +7,31 @@ import ModalPortal from './ModalPortal';
    DIALOG STATE
    ========================================================= */
 
-const initialDialogState = {
-  open: false,
-  title: 'Are you sure?',
-  message: '',
-  confirmLabel: 'Confirm',
-  cancelLabel: 'Cancel',
-  destructive: true,
-  busy: false,
-};
-
-/* =========================================================
-   CUSTOM HOOK
-   ========================================================= */
-
-const useConfirmDialog = () => {
-  const [state, setState] = useState(initialDialogState);
-  const resolveRef = useRef(null);
-
-  const confirm = (options = {}) =>
-    new Promise((resolve) => {
-      resolveRef.current = resolve;
-
-      setState({
-        open: true,
-        title: options.title,
-        message: options.message,
-        confirmLabel: options.confirmLabel,
-        cancelLabel: options.cancelLabel,
-        destructive: options.destructive !== false,
-        busy: false,
-      });
-    });
-
-  const settle = (result) => {
-    const resolve = resolveRef.current;
-    resolveRef.current = null;
-
-    // Close the dialog, then deliver the result to the caller.
-    setState(initialDialogState);
-
-    resolve?.(result);
-  };
-
-  const dialog = {
-    state,
-    settle,
-  };
-
-  return { confirm, dialog };
-};
-
 /* =========================================================
    DIALOG HOST
+
+   The `useConfirmDialog` hook lives in ./useConfirmDialog so this file only
+   exports components and React Fast Refresh keeps working.
    ========================================================= */
 
-const ConfirmDialogHost = ({ dialog }) => {
-  if (!dialog) {
-    return null;
-  }
-
-  const {
-    open,
+const ConfirmationDialog = ({
+    open = false,
     title = 'Are you sure?',
     message = '',
     confirmLabel = 'Confirm',
     cancelLabel = 'Cancel',
     destructive = true,
     busy = false,
-  } = dialog.state || {};
+    onCancel,
+    onConfirm,
+  }) => {
 
   const cancel = () => {
-    if (dialog) {
-      dialog.settle?.(false);
-    }
+    if (!busy) onCancel?.();
   };
 
   const accept = () => {
-    if (dialog) {
-      dialog.settle?.(true);
-    }
+    if (!busy) onConfirm?.();
   };
 
   if (!open) {
@@ -102,6 +46,7 @@ const ConfirmDialogHost = ({ dialog }) => {
         "
         role="dialog"
         aria-modal="true"
+        aria-busy={busy}
         aria-label={title}
         tabIndex={-1}
         onMouseDown={(event) => {
@@ -145,6 +90,7 @@ const ConfirmDialogHost = ({ dialog }) => {
               disabled:opacity-50
             "
             aria-label="Close dialog"
+            disabled={busy}
           >
             <X size={18} />
           </button>
@@ -154,6 +100,7 @@ const ConfirmDialogHost = ({ dialog }) => {
           <button
             type="button"
             onClick={cancel}
+            disabled={busy}
             className="
               rounded-xl border border-gray-300 bg-white px-5 py-2.5 font-semibold
               text-gray-700 transition hover:bg-gray-50
@@ -188,5 +135,12 @@ const ConfirmDialogHost = ({ dialog }) => {
   );
 };
 
-// Fast refresh only works when a file only exports components.
-export { ConfirmDialogHost, useConfirmDialog };
+const ConfirmDialogHost = ({ dialog }) => (
+  <ConfirmationDialog
+    {...dialog?.state}
+    onCancel={() => dialog?.settle?.(false)}
+    onConfirm={() => dialog?.settle?.(true)}
+  />
+);
+
+export { ConfirmationDialog, ConfirmDialogHost };

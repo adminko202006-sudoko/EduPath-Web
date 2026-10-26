@@ -1,3 +1,4 @@
+import ErrorMessage from '../../components/ui/ErrorMessage';
 import { useEffect, useRef, useState } from 'react';
 
 import {
@@ -18,13 +19,14 @@ import {
 } from 'lucide-react';
 
 import api from '../../services/api';
-import tmcLogo from '../../assets/tmcLogo.jpg';
+import TmcLogo from '../../components/TmcLogo';
 
 const ResetPassword = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
   const email = location.state?.email || '';
+  const resetToken = location.state?.resetToken || '';
 
   const [password, setPassword] = useState('');
   const [passwordConfirmation, setPasswordConfirmation] =
@@ -71,7 +73,7 @@ const ResetPassword = () => {
     setSuccess('');
     setError('');
 
-    if (!email) {
+    if (!email || !resetToken) {
       setError(
         'Your password reset session is missing. Please request a new OTP.'
       );
@@ -106,6 +108,7 @@ const ResetPassword = () => {
         '/auth/reset-password-with-otp',
         {
           email,
+          reset_token: resetToken,
           password,
           password_confirmation: passwordConfirmation,
         }
@@ -494,15 +497,7 @@ const ResetPassword = () => {
               {/* Logo glow */}
               <div className="absolute inset-0 rounded-full bg-[#F4B400]/20 blur-2xl scale-110" />
 
-              <div className="relative w-24 h-24 rounded-full bg-white p-1.5 shadow-[0_12px_35px_rgba(18,59,93,0.18)] ring-2 ring-[#F4B400]/70">
-
-                <img
-                  src={tmcLogo}
-                  alt="Trinidad Municipal College Logo"
-                  className="w-full h-full object-contain rounded-full"
-                />
-
-              </div>
+              <TmcLogo className="h-24 w-24 shadow-[0_12px_35px_rgba(18,59,93,0.18)] ring-2 ring-[#F4B400]/70" />
 
               {/* Security badge */}
               <div className="absolute -bottom-2 -right-2 w-9 h-9 rounded-full bg-[#123B5D] text-white flex items-center justify-center border-4 border-[#F4F7FA] shadow-md">
@@ -634,7 +629,7 @@ const ResetPassword = () => {
                   ERROR
               ================================================== */}
               {error && (
-                <div className="mb-5 flex items-start gap-3 rounded-2xl bg-red-50 border border-red-200 px-4 py-3.5 text-red-700 text-sm shadow-sm">
+                <ErrorMessage message={error}><div className="mb-5 flex items-start gap-3 rounded-2xl bg-red-50 border border-red-200 px-4 py-3.5 text-red-700 text-sm shadow-sm">
 
                   <AlertCircle
                     size={19}
@@ -645,7 +640,7 @@ const ResetPassword = () => {
                     {error}
                   </span>
 
-                </div>
+                </div></ErrorMessage>
               )}
 
 

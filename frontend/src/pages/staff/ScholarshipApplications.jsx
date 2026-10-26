@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import ScholarshipApplicantDetails from '../../components/ScholarshipApplicantDetails';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Search,
   Eye,
@@ -20,8 +22,10 @@ import {
   Gift,
   ExternalLink,
 } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import api from '../../services/api';
+import ApplicantApplicationGroups from '../../components/ApplicantApplicationGroups';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 import ModalPortal from '../../components/ui/ModalPortal';
 
 const STATUS_CONFIG = {
@@ -38,7 +42,7 @@ const STATUS_CONFIG = {
       'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/20',
   },
   approved: {
-    label: 'Approved',
+    label: 'Approved for eligibility',
     icon: CheckCircle2,
     classes:
       'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/20',
@@ -162,15 +166,15 @@ export default function ScholarshipApplications() {
   const [statusFilter, setStatusFilter] = useState('all');
 
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
   const [selectedApplication, setSelectedApplication] = useState(null);
-  const [newStatus, setNewStatus] = useState('pending');
+  const [newStatus, setNewStatus] = useState('');
   const [remarks, setRemarks] = useState('');
   const [updating, setUpdating] = useState(false);
 
-  const loadApplications = async (isRefresh = false) => {
+  const loadApplications = useCallback(async (isRefresh = false) => {
     if (isRefresh) {
       setRefreshing(true);
     } else {
@@ -196,13 +200,18 @@ export default function ScholarshipApplications() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [token]);
+  useAutoRefresh(async () => {
+    await loadApplications(true);
+  });
 
   useEffect(() => {
     if (token) {
-      loadApplications();
+      queueMicrotask(() => {
+        loadApplications();
+      });
     }
-  }, [token]);
+  }, [token, loadApplications]);
 
   const filteredApplications = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -253,8 +262,8 @@ export default function ScholarshipApplications() {
 
   const openReview = (application) => {
     setSelectedApplication(application);
-    setNewStatus(application.status || 'pending');
-    setRemarks(application.remarks || '');
+    setNewStatus(application.staff_recommendation || '');
+    setRemarks(application.staff_recommendation_remarks || '');
   };
 
   const closeReview = () => {
@@ -262,7 +271,7 @@ export default function ScholarshipApplications() {
 
     setSelectedApplication(null);
     setRemarks('');
-    setNewStatus('pending');
+    setNewStatus('');
   };
 
   const updateApplication = async () => {
@@ -275,8 +284,8 @@ export default function ScholarshipApplications() {
       const response = await api.put(
         `/staff/scholarship-applications/${selectedApplication.id}`,
         {
-          status: newStatus,
-          remarks: remarks.trim() || null,
+          staff_recommendation: newStatus,
+          staff_recommendation_remarks: remarks.trim() || null,
         },
         {
           headers: {
@@ -296,14 +305,17 @@ export default function ScholarshipApplications() {
             ? {
                 ...application,
                 ...(updated || {}),
-                status: newStatus,
-                remarks: remarks.trim() || null,
+                staff_recommendation: newStatus,
+                staff_recommendation_remarks: remarks.trim() || null,
               }
             : application
         )
       );
 
-      closeReview();
+      // Close directly because the updating flag is still true in this render.
+      setSelectedApplication(null);
+      setRemarks('');
+      setNewStatus('');
     } catch (err) {
       setError(
         err.response?.data?.message ||
@@ -353,7 +365,7 @@ export default function ScholarshipApplications() {
       <div className="mx-auto max-w-7xl space-y-6">
         {/* Hero */}
         <section className="ep-card overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="ep-brand-gradient p-6 text-white sm:p-8">
+          <div className="ep-page-banner ep-brand-gradient p-6 text-white sm:p-8">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-start gap-4">
                 <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/15">
@@ -368,24 +380,12 @@ export default function ScholarshipApplications() {
                     Scholarship Applications
                   </h1>
                   <p className="mt-2 max-w-2xl text-sm text-white/80">
-                    Review scholarship applications assigned to your
-                    programs.
+                    Verify applications assigned to your programs and record recommendations for the Admin’s final decision.
                   </p>
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => loadApplications(true)}
-                disabled={refreshing}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-white/15 px-4 py-2.5 text-sm font-semibold hover:bg-white/25 disabled:opacity-60"
-              >
-                <RefreshCw
-                  size={17}
-                  className={refreshing ? 'animate-spin' : ''}
-                />
-                Refresh
-              </button>
+              
             </div>
           </div>
         </section>
@@ -409,7 +409,7 @@ export default function ScholarshipApplications() {
           />
           <StatCard
             icon={CheckCircle2}
-            label="Approved"
+            label="Review approved"
             value={counts.approved}
           />
           <StatCard
@@ -420,10 +420,10 @@ export default function ScholarshipApplications() {
         </section>
 
         {error && (
-          <div className="flex gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
+          <ErrorMessage message={error}><div className="flex gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300">
             <AlertCircle size={18} className="shrink-0" />
             <span>{error}</span>
-          </div>
+          </div></ErrorMessage>
         )}
 
         {/* Filters */}
@@ -456,7 +456,7 @@ export default function ScholarshipApplications() {
                 <option value="all">All Statuses</option>
                 <option value="pending">Pending</option>
                 <option value="under_review">Under Review</option>
-                <option value="approved">Approved</option>
+                <option value="approved">Approved for eligibility</option>
                 <option value="rejected">Rejected</option>
               </select>
             </div>
@@ -479,6 +479,8 @@ export default function ScholarshipApplications() {
               </p>
             </div>
           ) : (
+            <ApplicantApplicationGroups applications={filteredApplications}>
+              {(groupApplications) => (
             <>
               {/* Desktop */}
               <div className="hidden overflow-x-auto lg:block">
@@ -504,7 +506,7 @@ export default function ScholarshipApplications() {
                   </thead>
 
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {filteredApplications.map((application) => {
+                    {groupApplications.map((application) => {
                       const program = getPrimaryProgram(application);
 
                       return (
@@ -583,7 +585,7 @@ export default function ScholarshipApplications() {
 
               {/* Mobile */}
               <div className="divide-y divide-slate-100 lg:hidden dark:divide-slate-800">
-                {filteredApplications.map((application) => {
+                {groupApplications.map((application) => {
                   const program = getPrimaryProgram(application);
 
                   return (
@@ -634,6 +636,8 @@ export default function ScholarshipApplications() {
                 })}
               </div>
             </>
+              )}
+            </ApplicantApplicationGroups>
           )}
         </section>
       </div>
@@ -655,7 +659,8 @@ export default function ScholarshipApplications() {
                   Review Scholarship Application
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Application #{selectedApplication.id}
+                  Application details
+                  <span className="mt-2 block text-sm font-normal">Review approval is separate from an award. Final award: <strong>{(selectedApplication.award_status || 'undecided').replaceAll('_', ' ')}</strong>.</span>
                 </p>
               </div>
 
@@ -702,6 +707,7 @@ export default function ScholarshipApplications() {
               </div>
 
               <div className="mt-5 space-y-4">
+              <ScholarshipApplicantDetails application={selectedApplication} />
                 <ScholarshipSection
                   icon={BookOpen}
                   title="Description"
@@ -760,20 +766,19 @@ export default function ScholarshipApplications() {
                 <div className="space-y-4">
                   <div>
                     <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
-                      Status
+                      Staff Recommendation
                     </label>
 
                     <select
                       value={newStatus}
                       onChange={(event) => setNewStatus(event.target.value)}
+                      required
                       className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                     >
-                      <option value="pending">Pending</option>
-                      <option value="under_review">
-                        Under Review
-                      </option>
-                      <option value="approved">Approved</option>
-                      <option value="rejected">Rejected</option>
+                      <option value="">Select recommendation</option>
+                      <option value="recommended">Recommend</option>
+                      <option value="not_recommended">Do Not Recommend</option>
+                      <option value="needs_information">Needs More Information</option>
                     </select>
                   </div>
 
@@ -786,7 +791,7 @@ export default function ScholarshipApplications() {
                       value={remarks}
                       onChange={(event) => setRemarks(event.target.value)}
                       rows={4}
-                      placeholder="Add review remarks..."
+                      placeholder="Explain your recommendation or list missing requirements..."
                       className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                     />
                   </div>
@@ -807,7 +812,7 @@ export default function ScholarshipApplications() {
               <button
                 type="button"
                 onClick={updateApplication}
-                disabled={updating}
+                disabled={updating || !newStatus}
                 className="inline-flex items-center gap-2 rounded-xl bg-[#123B5D] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#0e2f4a] disabled:opacity-60 dark:bg-blue-600 dark:hover:bg-blue-700"
               >
                 {updating ? (

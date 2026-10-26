@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import ErrorMessage from '../../components/ui/ErrorMessage';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Megaphone,
   Plus,
@@ -16,10 +17,13 @@ import {
   Loader2,
 } from 'lucide-react';
 
-import { useConfirmDialog, ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import { ConfirmDialogHost } from '../../components/ui/ConfirmDialog';
+import { useConfirmDialog } from '../../components/ui/useConfirmDialog';
 
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import api from '../../services/api';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
+import { publicationTimeForInput, publicationTimeToUtc } from '../../services/publicationTime';
 
 const StatCard = ({
   title,
@@ -81,7 +85,7 @@ const Announcements = ({ confirm }) => {
 
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [showForm, setShowForm] = useState(false);
@@ -96,7 +100,7 @@ const Announcements = ({ confirm }) => {
     published_at: '',
   });
 
-  const loadAnnouncements = async (isRefresh = false) => {
+  const loadAnnouncements = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) {
         setRefreshing(true);
@@ -131,15 +135,20 @@ const Announcements = ({ confirm }) => {
         setLoading(false);
       }
     }
-  };
+  }, [token]);
+  useAutoRefresh(async () => {
+    await loadAnnouncements(true);
+  });
 
   useEffect(() => {
     if (!token) {
       return;
     }
 
-    loadAnnouncements();
-  }, [token]);
+    queueMicrotask(() => {
+      loadAnnouncements();
+    });
+  }, [token, loadAnnouncements]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -174,7 +183,7 @@ const Announcements = ({ confirm }) => {
         title: form.title,
         content: form.content,
         status: form.status,
-        published_at: form.published_at || null,
+        published_at: publicationTimeToUtc(form.published_at),
       };
 
       if (editingAnnouncement) {
@@ -243,9 +252,7 @@ const Announcements = ({ confirm }) => {
       title: announcement.title || '',
       content: announcement.content || '',
       status: announcement.status || 'draft',
-      published_at: announcement.published_at
-        ? announcement.published_at.substring(0, 16)
-        : '',
+      published_at: publicationTimeForInput(announcement.published_at),
     });
 
     setShowForm(true);
@@ -342,7 +349,7 @@ const Announcements = ({ confirm }) => {
       <div className="space-y-8 page-transition">
         {/* Hero Skeleton */}
         <div className="ep-card rounded-2xl overflow-hidden">
-          <div className="ep-brand-gradient p-6 sm:p-8">
+          <div className="ep-page-banner ep-brand-gradient p-6 sm:p-8">
             <div className="space-y-5">
               <div className="ep-skeleton bg-white/20 h-7 w-32 rounded-full" />
 
@@ -410,7 +417,7 @@ const Announcements = ({ confirm }) => {
   return (
     <div className="space-y-8 page-transition">
       {/* Hero */}
-      <div className="relative overflow-hidden rounded-2xl ep-brand-gradient shadow-lg">
+      <div className="ep-page-banner relative overflow-hidden rounded-2xl ep-brand-gradient shadow-lg">
         <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full bg-white/5" />
         <div className="absolute -bottom-24 right-24 w-64 h-64 rounded-full bg-white/5" />
         <div className="absolute top-10 left-1/2 w-24 h-24 rounded-full bg-white/5" />
@@ -435,24 +442,7 @@ const Announcements = ({ confirm }) => {
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={() => loadAnnouncements(true)}
-                disabled={refreshing}
-                className="inline-flex items-center gap-2 px-4 py-3 rounded-xl border border-white/20 bg-white/10 hover:bg-white/20 disabled:opacity-60 text-white font-semibold transition"
-              >
-                <RefreshCw
-                  size={17}
-                  className={
-                    refreshing
-                      ? 'animate-spin'
-                      : ''
-                  }
-                />
-                {refreshing
-                  ? 'Refreshing...'
-                  : 'Refresh'}
-              </button>
+              
 
               <button
                 type="button"
@@ -487,7 +477,7 @@ const Announcements = ({ confirm }) => {
 
       {/* Alerts */}
       {error && (
-        <div className="flex items-start gap-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-300 px-4 py-4 rounded-2xl">
+        <ErrorMessage message={error}><div className="flex items-start gap-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-300 px-4 py-4 rounded-2xl">
           <AlertCircle
             size={20}
             className="mt-0.5 shrink-0"
@@ -502,7 +492,7 @@ const Announcements = ({ confirm }) => {
               {error}
             </p>
           </div>
-        </div>
+        </div></ErrorMessage>
       )}
 
       {success && (
@@ -736,7 +726,7 @@ const Announcements = ({ confirm }) => {
                   </div>
 
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
-                    Optional publication date and time.
+                    Uses your device’s local time. Leave blank to publish immediately when status is Published.
                   </p>
                 </div>
               </div>
@@ -916,10 +906,7 @@ const Announcements = ({ confirm }) => {
                           {announcement.title}
                         </h2>
 
-                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                          Announcement #
-                          {announcement.id}
-                        </p>
+
                       </div>
                     </div>
 

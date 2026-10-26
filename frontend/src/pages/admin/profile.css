@@ -1,0 +1,34 @@
+.ep-admin-profile-cover { min-height: 176px; background-position: center 42%; }
+.ep-admin-profile .ep-card { border: 1px solid var(--ep-border, #e0e8ef); box-shadow: 0 5px 22px #123b5d08; }
+.ep-admin-profile .ep-hover-lift:hover { transform: none; }
+.ep-admin-profile-identity { position: relative; }
+.ep-admin-profile-avatar { align-self: flex-start; }
+.ep-admin-profile-name { padding-top: 48px; }
+.ep-admin-profile-photo-tools { padding-top: 4px; }
+.ep-admin-profile-edit { min-height: 44px; background: #f4b400; color: #0b2941; }
+.ep-admin-profile-edit:hover { background: #ffcb35; box-shadow: 0 4px 12px #123b5d14; }
+.ep-admin-profile-details > .ep-card > .ep-brand-gradient { background: #f0f7f8; border-bottom: 1px solid #dce9ed; }
+.ep-admin-profile-details > .ep-card > .ep-brand-gradient :is(h2, svg) { color: #123b5d; }
+.ep-admin-profile-details > .ep-card > .ep-brand-gradient p { color: #52677b; }
+.ep-admin-profile-details > .ep-card > .ep-brand-gradient .rounded-xl { background: #dcefee; border-color: #c5e3e0; }
+.ep-admin-profile :is(button, input, label[for]):focus-visible { outline: 2px solid #0f766e; outline-offset: 3px; }
+.ep-admin-profile label:has(input[type="file"]:focus-visible) { outline: 2px solid #0f766e; outline-offset: 3px; }
+.ep-admin-profile-photo-tools:has(input[type="file"]:focus-visible) label[for] { outline: 2px solid #0f766e; outline-offset: 3px; }
+.dark .ep-admin-profile-details > .ep-card > .ep-brand-gradient { background: #142c42; border-color: #294156; }
+.dark .ep-admin-profile-details > .ep-card > .ep-brand-gradient :is(h2, svg) { color: #f1f5f9; }
+.dark .ep-admin-profile-details > .ep-card > .ep-brand-gradient p { color: #bacbd9; }
+.dark .ep-admin-profile-details > .ep-card > .ep-brand-gradient .rounded-xl { background: #174448; border-color: #286166; }
+@media (max-width: 639px) {
+  .ep-admin-profile-cover { min-height: 170px; }
+  .ep-admin-profile-identity { flex-direction: column; align-items: stretch; gap: 14px; }
+  .ep-admin-profile-person { flex-direction: column; align-items: center; text-align: center; }
+  .ep-admin-profile-avatar { width: 104px; height: 104px; align-self: center; }
+  .ep-admin-profile-name { width: 100%; padding-top: 0; }
+  .ep-admin-profile-name :is(div, p) { justify-content: center; }
+  .ep-admin-profile-photo-tools { justify-content: center; }
+  .ep-admin-profile-identity > .flex.items-center { justify-content: center; flex-wrap: wrap; }
+  .ep-admin-profile-details > .ep-card > form, .ep-admin-profile-details > .ep-card > .p-6 { padding: 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ep-admin-profile *, .ep-admin-profile *::before, .ep-admin-profile *::after { animation: none !important; transition: none !important; }
+}

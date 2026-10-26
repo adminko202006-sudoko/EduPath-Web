@@ -1,7 +1,9 @@
+import ErrorMessage from '../../components/ui/ErrorMessage';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import api from '../../services/api';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
 
 import {
   Users,
@@ -412,7 +414,7 @@ const Dashboard = () => {
 
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
   const loadDashboard = useCallback(
@@ -453,9 +455,14 @@ const Dashboard = () => {
     },
     [token],
   );
+  useAutoRefresh(async () => {
+    await loadDashboard(true);
+  });
 
   useEffect(() => {
-    loadDashboard();
+    queueMicrotask(() => {
+      loadDashboard();
+    });
   }, [loadDashboard]);
 
   if (loading) {
@@ -464,7 +471,7 @@ const Dashboard = () => {
 
   if (error && !dashboard) {
     return (
-      <div className="page-transition flex min-h-[480px] items-center justify-center">
+      <ErrorMessage message={error}><div className="page-transition flex min-h-[480px] items-center justify-center">
         <div className="ep-card w-full max-w-lg p-8 text-center animate-scale-in">
           <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-red-500/10 text-red-500">
             <AlertCircle size={30} />
@@ -487,14 +494,14 @@ const Dashboard = () => {
             Try Again
           </button>
         </div>
-      </div>
+      </div></ErrorMessage>
     );
   }
 
   return (
     <div className="page-transition space-y-8">
       {/* HERO */}
-      <section className="ep-brand-gradient relative overflow-hidden rounded-2xl p-6 shadow-lg shadow-[#123B5D]/10 sm:p-8 lg:p-9 animate-fade-up">
+      <section className="ep-page-banner ep-brand-gradient relative overflow-hidden rounded-2xl p-6 shadow-lg shadow-[#123B5D]/10 sm:p-8 lg:p-9 animate-fade-up">
         <div className="pointer-events-none absolute -right-12 -top-16 h-52 w-52 rounded-full border border-white/10 bg-white/[0.04]" />
         <div className="pointer-events-none absolute -bottom-24 right-24 h-56 w-56 rounded-full bg-[#F4B400]/10 blur-sm" />
         <div className="pointer-events-none absolute bottom-0 left-1/3 h-40 w-40 rounded-full bg-teal-300/[0.06] blur-2xl" />
@@ -529,23 +536,12 @@ const Dashboard = () => {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => loadDashboard(true)}
-            disabled={refreshing}
-            className="inline-flex shrink-0 items-center justify-center gap-2 self-start rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-bold text-white shadow-sm backdrop-blur-sm transition-colors hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-60 lg:self-center"
-          >
-            <RefreshCw
-              size={16}
-              className={refreshing ? 'animate-spin' : ''}
-            />
-            {refreshing ? 'Refreshing...' : 'Refresh Dashboard'}
-          </button>
+          
         </div>
       </section>
 
       {error && dashboard && (
-        <div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-800 dark:text-amber-300">
+        <ErrorMessage message={error}><div className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-800 dark:text-amber-300">
           <AlertCircle size={18} className="mt-0.5 shrink-0" />
           <div className="flex-1">
             <p className="font-bold">Refresh unsuccessful</p>
@@ -558,7 +554,7 @@ const Dashboard = () => {
           >
             Retry
           </button>
-        </div>
+        </div></ErrorMessage>
       )}
 
       {/* SYSTEM OVERVIEW */}
@@ -617,7 +613,7 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 divide-y divide-slate-100 dark:divide-slate-800 md:grid-cols-3 md:divide-x md:divide-y-0">
+        <div className="grid grid-cols-1 gap-5 p-5 sm:p-6 md:grid-cols-3">
           {APPLICATION_CARDS.map((card, index) => (
             <StatCard
               key={card.key}
@@ -702,9 +698,7 @@ const Dashboard = () => {
                         {applicant.user?.email || 'No email available'}
                       </p>
 
-                      <span className="mt-2 inline-flex rounded-md border border-[#123B5D]/10 bg-[#123B5D]/5 px-2 py-1 text-[10px] font-bold text-[#123B5D] dark:border-teal-400/15 dark:bg-teal-400/10 dark:text-teal-300">
-                        Applicant #{applicant.id}
-                      </span>
+
                     </div>
                   </div>
 

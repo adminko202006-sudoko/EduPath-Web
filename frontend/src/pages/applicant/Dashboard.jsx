@@ -1,32 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import api from '../../services/api';
-import { StatusBadge } from '../../components/ui/Shared';
+import useAutoRefresh from '../../hooks/useAutoRefresh';
+import { ErrorState, StatusBadge } from '../../components/ui/Shared';
 
-import {
-  FileText,
-  Award,
-  FolderOpen,
-  GraduationCap,
-  ArrowRight,
-  Clock3,
-  Bell,
-  Building2,
-  RefreshCw,
-  Sparkles,
-  MapPin,
-  BookOpen,
-  UserRound,
-  ChevronRight,
-} from 'lucide-react';
+import { FileText, Award, FolderOpen, GraduationCap, ArrowRight, Clock3, Bell, Building2, Sparkles, MapPin, BookOpen, UserRound, ChevronRight } from 'lucide-react';
 
 const ApplicantDashboard = () => {
-  const { user, token } = useAuth();
+  const { user, token, verification } = useAuth();
 
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [, setError] = useState('');
+  const [, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
 
   // Real backend data states
   const [admissionApp, setAdmissionApp] = useState(null);
@@ -39,7 +25,7 @@ const ApplicantDashboard = () => {
   /* =========================================================
      FETCH DASHBOARD DATA
   ========================================================= */
-  const fetchDashboardData = async (isRefresh = false) => {
+  const fetchDashboardData = useCallback(async (isRefresh = false) => {
     if (!token) return;
 
     try {
@@ -68,6 +54,10 @@ const ApplicantDashboard = () => {
         api.get('/applicant/exams', { headers }),
         api.get('/applicant/notifications', { headers }),
       ]);
+
+      if ([admissionsRes, documentsRes, scholarshipAppsRes, scholarshipsRes, examsRes, notificationsRes].some(result => result.status === 'rejected')) {
+        setError('Unable to load some dashboard information. Please try refreshing.');
+      }
 
       // 1. Admission Application
       if (admissionsRes.status === 'fulfilled') {
@@ -112,11 +102,16 @@ const ApplicantDashboard = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [token]);
+  useAutoRefresh(async () => {
+    await fetchDashboardData(true);
+  });
 
   useEffect(() => {
-    fetchDashboardData();
-  }, [token]);
+    queueMicrotask(() => {
+      fetchDashboardData();
+    });
+  }, [token, fetchDashboardData]);
 
   /* =========================================================
      DATE & TIME HELPERS
@@ -298,10 +293,11 @@ const ApplicantDashboard = () => {
   ========================================================= */
   return (
     <div className="space-y-8 page-transition">
+      {error && <ErrorState message={error} onRetry={() => fetchDashboardData(true)} />}
       {/* =====================================================
           HERO BANNER
       ====================================================== */}
-      <section className="ep-brand-gradient relative overflow-hidden rounded-2xl p-6 sm:p-8 shadow-lg text-white">
+      <section className="ep-page-banner ep-brand-gradient relative overflow-hidden rounded-2xl p-6 sm:p-8 shadow-lg text-white">
         <div className="absolute -right-20 -top-20 h-56 w-56 rounded-full bg-teal-300/10 blur-2xl pointer-events-none" />
         <div className="absolute -bottom-24 left-1/3 h-52 w-52 rounded-full bg-amber-300/10 blur-2xl pointer-events-none" />
         <div className="absolute right-1/4 top-1/2 h-24 w-24 rounded-full bg-white/5 blur-xl pointer-events-none" />
@@ -313,7 +309,7 @@ const ApplicantDashboard = () => {
               <span>Trinidad Municipal College • EduPath</span>
             </div>
 
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight">
+            <h1 data-tutorial-target="applicant-welcome-intro" className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight">
               Welcome, {user?.name || 'Applicant'}!
             </h1>
 
@@ -324,16 +320,7 @@ const ApplicantDashboard = () => {
           </div>
 
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => fetchDashboardData(true)}
-              disabled={refreshing}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white shadow-md ring-1 ring-white/20 transition-colors hover:bg-white/20 disabled:opacity-50"
-              title="Refresh dashboard data"
-            >
-              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-              <span>{refreshing ? 'Refreshing...' : 'Refresh'}</span>
-            </button>
+            
           </div>
         </div>
       </section>
@@ -813,7 +800,7 @@ const ApplicantDashboard = () => {
               <div className="flex items-center gap-3">
                 <BookOpen size={18} className="text-[#D9A900] dark:text-amber-400" />
                 <span className="text-xs font-bold text-gray-800 dark:text-gray-200">
-                  Academic Programs
+                  {verification?.identity?.student_type === 'old' ? 'My Program' : 'Academic Programs'}
                 </span>
               </div>
               <ChevronRight

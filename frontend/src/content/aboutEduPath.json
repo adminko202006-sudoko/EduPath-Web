@@ -1,0 +1,48 @@
+{
+  "title": "Five people. One clearer path to college.",
+  "subtitle": "Built for Trinidad Municipal College",
+  "introduction": "EduPath brings admission, documents, scholarships and examinations into one connected experience on the web and mobile. Created by a five-person project team, it helps applicants understand their next step and helps school personnel keep applications moving.",
+  "purpose": "College applications involve more than filling out a form. Requirements, document feedback, deadlines and examination updates need to be easy to find. EduPath brings those steps together so applicants can follow their progress and staff can review information in an organized workspace.",
+  "mission": "Make admission and scholarship services easier to understand, access and manage through a clear, connected digital experience.",
+  "vision": "A college application journey where every applicant knows what to prepare, what happens next and where to find an update.",
+  "principles": [
+    {"title": "Clarity at every step", "description": "Explain requirements, status changes and the next action in language applicants can understand."},
+    {"title": "People make the decisions", "description": "Support the work of authorized college personnel. Submitting an application or completing an exam does not automatically grant admission or a scholarship."},
+    {"title": "Care with information", "description": "Keep applicant records within the appropriate accounts, roles and assigned staff permissions."}
+  ],
+  "features": [
+    {"id": "admission", "title": "Admission applications", "description": "Review available programs and admission periods, submit an application and follow its progress."},
+    {"id": "documents", "title": "Documents and feedback", "description": "Upload requested requirements, read reviewer feedback and re-upload rejected documents for another review."},
+    {"id": "scholarships", "title": "Scholarship opportunities", "description": "Explore program information, eligibility, deadlines and requirements before submitting academic and financial details."},
+    {"id": "entrance", "title": "Scheduled entrance exams", "description": "Find assigned schedules, venues and examination updates. Results become visible after official release."},
+    {"id": "online", "title": "Online scholarship exams", "description": "Take an examination when eligible and authorized. Retakes need approval, and results stay private until officially released."},
+    {"id": "updates", "title": "Progress and notifications", "description": "Keep track of application updates, announcements and the actions that need your attention."}
+  ],
+  "audiences": [
+    {"title": "Applicants", "description": "Prepare requirements, submit applications and follow admission and scholarship progress from one account."},
+    {"title": "Staff", "description": "Review assigned applications and documents, provide feedback and support processing within granted permissions."},
+    {"title": "Administrators", "description": "Manage application settings, programs, opportunities and access, and perform authorized decisions and official result releases."}
+  ],
+  "journey": [
+    {"title": "Prepare your account", "description": "Register, complete your profile and review the program requirements and application deadlines."},
+    {"title": "Apply and upload", "description": "Submit an admission application during an open period and upload the documents requested for your application."},
+    {"title": "Follow the review", "description": "Check feedback and notifications, correct rejected documents and follow any assigned examination instructions."},
+    {"title": "Explore your next opportunity", "description": "Review scholarship eligibility and apply when qualified. Follow any required examination and wait for official decisions and released results."}
+  ],
+  "team": [
+    {"id": "oseas-jamora", "name": "Oseas Jamora", "initials": "OJ", "role": "Project Lead & Systems Analyst", "description": "Coordinates the project direction and connects applicant and staff needs with the system's workflows.", "responsibilities": ["Requirements and workflow planning", "Team coordination and project scope"], "portrait": {"x": 0.305, "y": 0.215}},
+    {"id": "archie-corre", "name": "Archie Corre", "initials": "AC", "role": "Lead Developer", "description": "Connects the web and mobile experiences with the backend, turning the team's plans into working features.", "responsibilities": ["Web, mobile and API development", "Feature integration and technical fixes"], "portrait": {"x": 0.455, "y": 0.365}},
+    {"id": "jetro-ibaoc", "name": "Jetro Ibaoc", "initials": "JI", "role": "UI/UX Designer", "description": "Shapes clear page layouts, consistent visual details and practical interactions for applicants and school personnel.", "responsibilities": ["Interface design and user journeys", "Responsive layouts and usability"], "portrait": {"x": 0.135, "y": 0.48}},
+    {"id": "devid-caballero", "name": "Devid Caballero", "initials": "DC", "role": "Quality Assurance & Testing", "description": "Checks application flows and records issues so the team can improve reliability before presenting changes.", "responsibilities": ["Functional and cross-device testing", "Bug reports and regression checks"], "portrait": {"x": 0.83, "y": 0.49}},
+    {"id": "sharmyn-novela", "name": "Sharmyn Novela", "initials": "SN", "role": "Research & Documentation Lead", "description": "Organizes project research, explains system processes and keeps the written project materials clear and consistent.", "responsibilities": ["Research and project documentation", "User guidance and presentation materials"], "portrait": {"x": 0.605, "y": 0.255}}
+  ],
+  "artworkNote": "Team artwork is illustrative and does not depict the creators' actual appearances.",
+  "faq": [
+    {"question": "Is EduPath available on web and mobile?", "answer": "Yes. The web portal and mobile app connect to the same EduPath backend. Available screens and actions follow your account role and permissions."},
+    {"question": "Does submitting an application guarantee approval?", "answer": "No. Admission and scholarship decisions remain with authorized college personnel and depend on the applicable requirements and review process."},
+    {"question": "Are entrance exams and online scholarship exams the same?", "answer": "No. Scheduled entrance exams have their own assignments and schedules. Online scholarship exams have a separate eligibility, attempt and official result-release process."},
+    {"question": "Who should I contact about my application?", "answer": "For document feedback, schedules, eligibility or decisions, contact the responsible Trinidad Municipal College office through the college's published contact channels. For help using the platform, open the User Guide or replay the Welcome Tour in the mobile app."}
+  ],
+  "support": "Keep your account details private and upload only documents requested for your application. The development team builds the platform; authorized college personnel handle application decisions.",
+  "footer": "Created by Oseas Jamora, Archie Corre, Jetro Ibaoc, Devid Caballero and Sharmyn Novela."
+}

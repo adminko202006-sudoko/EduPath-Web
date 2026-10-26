@@ -1,5 +1,9 @@
 import axios from 'axios';
 
+import { notifyRefresh } from './refreshBus';
+import { createInFlightAdapter } from './inFlightRequests';
+import { resolveApiBaseUrl } from './apiBaseUrl';
+
 /**
  * API URL can be overridden in frontend/.env.local:
  * VITE_API_BASE_URL=http://192.168.x.x:8000/api
@@ -8,22 +12,28 @@ import axios from 'axios';
  * on the same LAN, provided Laravel is listening on 0.0.0.0:8000 and the
  * firewall permits the connection. localhost is intentionally not hardcoded.
  */
-const getApiBaseUrl = () => {
-  const configured = import.meta.env?.VITE_API_BASE_URL?.trim();
-  if (configured) return configured.replace(/\/+$/, '');
-
-  if (typeof window !== 'undefined' && window.location?.hostname) {
-    return `http://${window.location.hostname}:8000/api`;
-  }
-
-  return 'http://127.0.0.1:8000/api';
+export const getApiBaseUrl = () => {
+  return resolveApiBaseUrl({
+    configured: import.meta.env?.VITE_API_BASE_URL,
+    origin: typeof window !== 'undefined' ? window.location?.origin : '',
+    hostname: typeof window !== 'undefined' ? window.location?.hostname : '',
+    production: import.meta.env?.PROD === true,
+  });
 };
+
+export const getServerBaseUrl = () => getApiBaseUrl().replace(/\/api\/?$/, '');
 
 const api = axios.create({
   baseURL: getApiBaseUrl(),
   headers: { Accept: 'application/json' },
   timeout: 20000,
 });
+
+const transport = axios.getAdapter(api.defaults.adapter);
+api.defaults.adapter = createInFlightAdapter(transport, (config) => JSON.stringify([
+  api.getUri(config), config.responseType || '', config.timeout, config.withCredentials,
+  Object.entries(config.headers?.toJSON?.() || config.headers || {}).sort(([a], [b]) => a.localeCompare(b)),
+]));
 
 api.interceptors.request.use(
   (config) => {
@@ -48,6 +58,35 @@ api.interceptors.request.use(
     }
 
     return config;
+  },
+  (error) => Promise.reject(error),
+);
+
+/*
+ * After every successful create/update/delete, tell all mounted screens
+ * (via the refresh bus) to reload their data — this is what keeps lists,
+ * dashboards and detail pages up to date without a manual page refresh.
+ * Login/logout/session requests are skipped: they don't drive screen data.
+ */
+const MUTATING_METHODS = new Set(['post', 'put', 'patch', 'delete']);
+
+api.interceptors.response.use(
+  (response) => {
+    const method = String(response.config?.method || '').toLowerCase();
+    const url = String(response.config?.url || '');
+    const status = response.status;
+
+    if (
+      MUTATING_METHODS.has(method) &&
+      !response.config?.skipGlobalRefresh &&
+      !url.startsWith('/auth') &&
+      status >= 200 &&
+      status < 300
+    ) {
+      notifyRefresh();
+    }
+
+    return response;
   },
   (error) => Promise.reject(error),
 );
